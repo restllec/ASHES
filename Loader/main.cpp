@@ -429,7 +429,7 @@ void DrawLicenseCard(ImDrawList* draw, ImVec2 origin, float width)
     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(170, 140, 255, 255));
     if(ImGui::Button("PRO в TG ->", ImVec2(108.0f, 24.0f)))
     {
-        ShellExecuteA(nullptr, "open", "https://t.me/darkflame_mta", nullptr, nullptr, SW_SHOWNORMAL);
+        ShellExecuteA(nullptr, "open", "https://t.me/ashes_rst_bot", nullptr, nullptr, SW_SHOWNORMAL);
     }
     ImGui::PopStyleColor(3);
 }

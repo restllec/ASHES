@@ -1490,7 +1490,7 @@ void DrawLicenseTab(ImVec2 position, ImVec2 size, float scale)
     ImGui::Spacing();
     if(XoneButton("Купить ключ в Telegram", scale, true, -1.0f, 34.0f * scale))
     {
-        ShellExecuteA(nullptr, "open", "https://t.me/darkflame_bot", nullptr, nullptr, SW_SHOWNORMAL);
+        ShellExecuteA(nullptr, "open", "https://t.me/ashes_rst_bot", nullptr, nullptr, SW_SHOWNORMAL);
     }
 
     ImGui::EndChild();
