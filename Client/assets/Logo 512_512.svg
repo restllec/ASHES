@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="iconGlow" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#222430" />
+      <stop offset="100%" stop-color="#09090C" />
+    </radialGradient>
+    <linearGradient id="gradL" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#B0B4C4" />
+    </linearGradient>
+    <linearGradient id="gradR" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D8DCE8" />
+      <stop offset="100%" stop-color="#646878" />
+    </linearGradient>
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Скругленная плашка иконки -->
+  <rect x="16" y="16" width="480" height="480" rx="105" fill="url(#iconGlow)" stroke="#2A2C38" stroke-width="6" />
+
+  <!-- Декоративные фоновые волны (в стиле меню) -->
+  <path d="M 16 340 Q 160 290, 280 350 T 496 310" fill="none" stroke="#FFFFFF" stroke-opacity="0.06" stroke-width="3" />
+  <path d="M 16 380 Q 180 330, 300 390 T 496 350" fill="none" stroke="#FFFFFF" stroke-opacity="0.04" stroke-width="2" />
+
+  <!-- Знак ASHES по центру -->
+  <g transform="translate(86, 68) scale(3.0)" filter="url(#glow)">
+    <polygon points="55,8 12,108 34,108 55,56" fill="url(#gradL)" />
+    <polygon points="52,15 4,92 12,108 55,8" fill="#FFFFFF" opacity="0.9" />
+    <polygon points="59,8 59,56 80,108 102,108" fill="url(#gradR)" />
+    <polygon points="62,15 110,92 102,108 59,8" fill="#8E92A4" opacity="0.75" />
+    <polygon points="57,62 45,84 57,106 69,84" fill="#FFFFFF" />
+  </g>
+</svg>

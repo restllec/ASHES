@@ -1,0 +1,97 @@
+# ====================================================================
+# ASHES Open Source (FREE) — Git Ignore Rules
+# ====================================================================
+
+# --- 1. Конфиденциальные данные и токены окружения ---
+.env
+.env.*
+!.env.example
+*.cfg
+Ashes.cfg
+DarkFlame.cfg
+credentials.json
+secrets/
+
+# --- 2. Скомпилированные файлы и артефакты сборки ---
+*.exe
+*.dll
+*.obj
+*.pdb
+*.idb
+*.ilk
+*.exp
+*.lib
+*.res
+*.pch
+*.gch
+*.slo
+*.lo
+*.o
+*.d
+*.so
+*.so.*
+*.dylib
+*.lai
+*.la
+*.a
+
+# Папки сборки и бинарных файлов
+build/
+Build/
+build-*/
+bin/
+out/
+Debug/
+Release/
+x86/
+x64/
+obj/
+
+# Временные файлы IDE и системы
+.vs/
+.idea/
+*.user
+*.suo
+*.sln.docstates
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+UpgradeLog.htm
+
+# CMake артефакты
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+install_manifest.txt
+compile_commands.json
+
+# Временные файлы и дампы
+*.tmp
+*.log
+*.bak
+*.swp
+*.dwo
+Testing/
+.cache/
+/RE
+/.codex-temp-dia2dump
+design-preview/renders/*.bmp
+design-preview/test-build/
+
+# --- 3. Приватные PRO-модули и полезная нагрузка ---
+pro/
+private/
+*pro*.lua
+PlowBot.lua
+DumpedScripts/
+
+# --- 4. Зависимости и пакетные менеджеры ---
+node_modules/
+.vercel/
+vcpkg_installed/
+__pycache__/
+*.pyc
+*.pyo
+

@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 350" width="100%" height="100%">
+  <defs>
+    <!-- Фоновое мягкое пепельно-багровое свечение как в Liner -->
+    <radialGradient id="bgGlow" cx="50%" cy="55%" r="50%">
+      <stop offset="0%" stop-color="#3a1518" stop-opacity="0.55" />
+      <stop offset="55%" stop-color="#12090c" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#070709" stop-opacity="1" />
+    </radialGradient>
+
+    <!-- Градиент для острых граней логотипа -->
+    <linearGradient id="bladeLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#A8ABB8" />
+    </linearGradient>
+
+    <linearGradient id="bladeRight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E2E4EC" />
+      <stop offset="100%" stop-color="#6E7282" />
+    </linearGradient>
+
+    <!-- Неоновое свечение для искры и знака -->
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Глубокий черный фон -->
+  <rect width="800" height="350" fill="#070709" />
+  <rect width="800" height="350" fill="url(#bgGlow)" />
+
+  <!-- Группа логотипа и текста по центру -->
+  <g transform="translate(215, 95)">
+    
+    <!-- ВЕКТОРНЫЙ ЗНАК ASHES (Стиль оригами/граней Liner) -->
+    <g filter="url(#softGlow)">
+      <!-- Левое острое крыло буквы А -->
+      <polygon points="55,8 12,108 34,108 55,56" fill="url(#bladeLeft)" />
+      <!-- Внешняя левая малая грань (эффект преломления) -->
+      <polygon points="52,15 4,92 12,108 55,8" fill="#FFFFFF" opacity="0.85" />
+
+      <!-- Правое острое крыло буквы А -->
+      <polygon points="59,8 59,56 80,108 102,108" fill="url(#bladeRight)" />
+      <!-- Внешняя правая малая грань -->
+      <polygon points="62,15 110,92 102,108 59,8" fill="#9498A8" opacity="0.7" />
+
+      <!-- Центральный парящий ромб-искра (Ember) -->
+      <polygon points="57,62 45,84 57,106 69,84" fill="#FFFFFF" />
+    </g>
+
+    <!-- Текстовый блок справа от знака -->
+    <text x="132" y="88" font-family="&#39;Inter&#39;, &#39;Segoe UI&#39;, &#39;Montserrat&#39;, sans-serif" font-size="72" font-weight="800" fill="#FFFFFF" letter-spacing="-2">ASHES</text>
+    
+    <!-- Подпись автора снизу -->
+    <text x="136" y="122" font-family="&#39;Inter&#39;, &#39;Segoe UI&#39;, sans-serif" font-size="20" font-weight="500" fill="#8A8E9E" letter-spacing="0.5">
+      automation suite <tspan fill="#FFFFFF" font-weight="600">by restleSS</tspan>
+    </text>
+  </g>
+</svg>

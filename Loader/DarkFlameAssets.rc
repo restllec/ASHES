@@ -1,0 +1,6 @@
+#include "loader_resources.h"
+
+IDR_DARK_FLAME_BACKGROUND RCDATA "..\\Client\\assets\\background.png"
+IDR_DARK_FLAME_BANNER RCDATA "..\\Client\\assets\\banner.png"
+IDR_ASHES_AGENT_PAYLOAD RCDATA "..\\bin\\Release\\x86\\AshesAgent.dll"
+IDR_ASHES_CLIENT_PAYLOAD RCDATA "..\\bin\\Release\\x86\\AshesClient.dll"
