@@ -128,11 +128,13 @@ NTSTATUS NTAPI HookLdrLoadDll(PWSTR searchPath, ULONG flags,
         }
         if (!InstallNetcHooks(netc))
         {
-            Log::Write(L"[bootstrap] netc hooks failed; rejecting module load");
-            return DllInitFailed;
+            Log::Write(L"[bootstrap] netc hooks failed; continuing without net hooks to avoid 1114");
         }
-        g_netcModule.store(netc, std::memory_order_release);
-        Log::Write(L"[bootstrap] netc hooks ready before LdrLoadDll returned");
+        else
+        {
+            g_netcModule.store(netc, std::memory_order_release);
+            Log::Write(L"[bootstrap] netc hooks ready before LdrLoadDll returned");
+        }
     }
     return status;
 }
@@ -326,19 +328,12 @@ bool InitializeRuntime()
     const HMODULE netc = GetModuleHandleW(L"netc.dll");
     if (netc && !InstallNetcHooks(netc))
     {
-        Log::Write(L"[bootstrap] preloaded netc hook installation failed");
-        RemoveLoaderHook();
-        MH_Uninitialize();
-        return false;
+        Log::Write(L"[bootstrap] preloaded netc hook installation failed (non-fatal)");
     }
 
     if(!StartScriptDumperWorkers())
     {
-        Log::Write(L"[scripts-dumper] worker startup failed");
-        ResetNetcHooks(netc);
-        RemoveLoaderHook();
-        MH_Uninitialize();
-        return false;
+        Log::Write(L"[scripts-dumper] worker startup failed (non-fatal)");
     }
 
     if(client)
@@ -350,6 +345,40 @@ bool InitializeRuntime()
     Log::Write(L"[bootstrap] AshesClient ready before gta_sa.exe resume");
     return true;
 }
+
+void WriteInitLog(const wchar_t* message)
+{
+    std::wstring logPath;
+    if (!g_loaderDirectory.empty() && g_loaderDirectory != L".")
+        logPath = g_loaderDirectory + L"\\ashes_init.log";
+    else
+        logPath = L"ashes_init.log";
+
+    HANDLE file = CreateFileW(logPath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        file = CreateFileW(L"ashes_init.log", FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    }
+    if (file != INVALID_HANDLE_VALUE)
+    {
+        SYSTEMTIME st{};
+        GetLocalTime(&st);
+        wchar_t timeBuf[64]{};
+        swprintf_s(timeBuf, L"[%02d:%02d:%02d.%03d] ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+        std::wstring line = std::wstring(timeBuf) + message + L"\r\n";
+        int lenA = WideCharToMultiByte(CP_UTF8, 0, line.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        if (lenA > 0)
+        {
+            std::string lineA(lenA, '\0');
+            WideCharToMultiByte(CP_UTF8, 0, line.c_str(), -1, lineA.data(), lenA, nullptr, nullptr);
+            DWORD written = 0;
+            WriteFile(file, lineA.data(), static_cast<DWORD>(lineA.size() - 1), &written, nullptr);
+        }
+        CloseHandle(file);
+    }
+}
 }
 
 BOOL WINAPI DllMain(HMODULE module, DWORD reason, void* reserved)
@@ -357,83 +386,132 @@ BOOL WINAPI DllMain(HMODULE module, DWORD reason, void* reserved)
     if (reason != DLL_PROCESS_ATTACH)
         return TRUE;
 
-    g_module = module;
-    DisableThreadLibraryCalls(module);
-    Log::Initialize(module);
-    Log::Write(L"[client] DllMain attached");
-    g_loaderDirectory = Environment::Read(BootstrapProtocol::LogDirectoryVariable);
-    std::wstring clientPath = Environment::Read(BootstrapProtocol::ClientPathVariable);
-    std::wstring loadedEventName = Environment::Read(BootstrapProtocol::ClientLoadedEventVariable);
-    g_antiShadow = ConfigFlag(BootstrapProtocol::AntiShadowVariable, true);
-    g_scriptsDumper = ConfigFlag(BootstrapProtocol::ScriptsDumperVariable,
-        false);
-    g_setSerial = ConfigFlag(BootstrapProtocol::SetSerialVariable, true);
-    g_randomSerial = ConfigFlag(BootstrapProtocol::RandomSerialVariable, false);
-    const std::wstring publicSerial = Environment::Read(BootstrapProtocol::PublicSerialVariable);
-    if(!publicSerial.empty())
-        g_publicSerial = Ascii(publicSerial);
+    WriteInitLog(L"[DllMain] entered DLL_PROCESS_ATTACH");
 
-    if(reserved)
+    try
     {
-        const auto& data = *static_cast<const BootstrapProtocol::Data*>(reserved);
-        if(data.magic == BootstrapProtocol::DataMagic && data.version == BootstrapProtocol::DataVersion)
+        g_module = module;
+        DisableThreadLibraryCalls(module);
+        Log::Initialize(module);
+        Log::Write(L"[client] DllMain attached");
+
+        g_loaderDirectory = Environment::Read(BootstrapProtocol::LogDirectoryVariable);
+        std::wstring clientPath = Environment::Read(BootstrapProtocol::ClientPathVariable);
+        std::wstring loadedEventName = Environment::Read(BootstrapProtocol::ClientLoadedEventVariable);
+        g_antiShadow = ConfigFlag(BootstrapProtocol::AntiShadowVariable, true);
+        g_scriptsDumper = ConfigFlag(BootstrapProtocol::ScriptsDumperVariable, false);
+        g_setSerial = ConfigFlag(BootstrapProtocol::SetSerialVariable, true);
+        g_randomSerial = ConfigFlag(BootstrapProtocol::RandomSerialVariable, false);
+        const std::wstring publicSerial = Environment::Read(BootstrapProtocol::PublicSerialVariable);
+        if(!publicSerial.empty())
+            g_publicSerial = Ascii(publicSerial);
+
+        if(reserved)
         {
-            if(data.logDirectory[0]) g_loaderDirectory = data.logDirectory;
-            if(data.clientPath[0]) clientPath = data.clientPath;
-            if(data.clientLoadedEvent[0]) loadedEventName = data.clientLoadedEvent;
-            g_antiShadow = data.antiShadow != 0;
-            g_scriptsDumper = data.scriptsDumper != 0;
-            g_setSerial = data.setSerial != 0;
-            g_randomSerial = data.randomSerial != 0;
-            if(data.publicSerial[0]) g_publicSerial = Ascii(data.publicSerial);
-        }
-    }
-
-    if(clientPath.empty())
-        clientPath = L"AshesClient.dll";
-    if(g_loaderDirectory.empty())
-    {
-        const auto separator = clientPath.find_last_of(L"\\/");
-        if(separator != std::wstring::npos)
-            g_loaderDirectory = clientPath.substr(0, separator);
-        else
-            g_loaderDirectory = L".";
-    }
-
-    SetLicenseDirectory(g_loaderDirectory);
-    InitializeLicense();
-
-    Environment::Clear(BootstrapProtocol::LogDirectoryVariable);
-    Environment::Clear(BootstrapProtocol::AgentPathVariable);
-    Environment::Clear(BootstrapProtocol::ClientPathVariable);
-    Environment::Clear(BootstrapProtocol::AgentReadyEventVariable);
-    Environment::Clear(BootstrapProtocol::ClientLoadedEventVariable);
-    Environment::Clear(BootstrapProtocol::AntiShadowVariable);
-    Environment::Clear(BootstrapProtocol::ScriptsDumperVariable);
-    Environment::Clear(BootstrapProtocol::SetSerialVariable);
-    Environment::Clear(BootstrapProtocol::RandomSerialVariable);
-    Environment::Clear(BootstrapProtocol::PublicSerialVariable);
-    if (!CrashHandler::Install(module, clientPath, L"AshesClient",
-        g_loaderDirectory))
-    {
-        Log::Write(L"[client] crash handler initialization failed");
-        return FALSE;
-    }
-    Log::Write(L"[client] crash handler ready");
-    if (InitializeRuntime())
-    {
-        if(!loadedEventName.empty())
-        {
-            HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, loadedEventName.c_str());
-            if(event)
+            const auto& data = *static_cast<const BootstrapProtocol::Data*>(reserved);
+            if(data.magic == BootstrapProtocol::DataMagic && data.version == BootstrapProtocol::DataVersion)
             {
-                SetEvent(event);
-                CloseHandle(event);
+                if(data.logDirectory[0]) g_loaderDirectory = data.logDirectory;
+                if(data.clientPath[0]) clientPath = data.clientPath;
+                if(data.clientLoadedEvent[0]) loadedEventName = data.clientLoadedEvent;
+                g_antiShadow = data.antiShadow != 0;
+                g_scriptsDumper = data.scriptsDumper != 0;
+                g_setSerial = data.setSerial != 0;
+                g_randomSerial = data.randomSerial != 0;
+                if(data.publicSerial[0]) g_publicSerial = Ascii(data.publicSerial);
             }
         }
+
+        if(clientPath.empty())
+            clientPath = L"AshesClient.dll";
+
+        if(g_loaderDirectory.empty() || g_loaderDirectory == L".")
+        {
+            const auto separator = clientPath.find_last_of(L"\\/");
+            if(separator != std::wstring::npos)
+                g_loaderDirectory = clientPath.substr(0, separator);
+            else
+            {
+                wchar_t modPath[MAX_PATH]{};
+                if(GetModuleFileNameW(module, modPath, MAX_PATH))
+                {
+                    const auto sep = std::wstring_view(modPath).find_last_of(L"\\/");
+                    if(sep != std::wstring_view::npos)
+                        g_loaderDirectory.assign(modPath, sep);
+                }
+                if(g_loaderDirectory.empty())
+                    g_loaderDirectory = L".";
+            }
+        }
+
+        WriteInitLog((L"[DllMain] directories resolved: loader=" + g_loaderDirectory + L", client=" + clientPath).c_str());
+
+        try
+        {
+            SetLicenseDirectory(g_loaderDirectory);
+            InitializeLicense();
+            WriteInitLog(L"[DllMain] InitializeLicense() completed");
+        }
+        catch(const std::exception& ex)
+        {
+            std::string err = ex.what();
+            WriteInitLog((L"[DllMain] InitializeLicense() exception: " + std::wstring(err.begin(), err.end())).c_str());
+        }
+        catch(...)
+        {
+            WriteInitLog(L"[DllMain] InitializeLicense() unknown exception caught");
+        }
+
+        Environment::Clear(BootstrapProtocol::LogDirectoryVariable);
+        Environment::Clear(BootstrapProtocol::AgentPathVariable);
+        Environment::Clear(BootstrapProtocol::ClientPathVariable);
+        Environment::Clear(BootstrapProtocol::AgentReadyEventVariable);
+        Environment::Clear(BootstrapProtocol::ClientLoadedEventVariable);
+        Environment::Clear(BootstrapProtocol::AntiShadowVariable);
+        Environment::Clear(BootstrapProtocol::ScriptsDumperVariable);
+        Environment::Clear(BootstrapProtocol::SetSerialVariable);
+        Environment::Clear(BootstrapProtocol::RandomSerialVariable);
+        Environment::Clear(BootstrapProtocol::PublicSerialVariable);
+
+        if (!CrashHandler::Install(module, clientPath, L"AshesClient", g_loaderDirectory))
+        {
+            Log::Write(L"[client] crash handler initialization failed");
+            WriteInitLog(L"[DllMain] CrashHandler::Install failed (non-fatal)");
+        }
+        else
+        {
+            Log::Write(L"[client] crash handler ready");
+            WriteInitLog(L"[DllMain] CrashHandler::Install ready");
+        }
+
+        if (InitializeRuntime())
+        {
+            if(!loadedEventName.empty())
+            {
+                HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, loadedEventName.c_str());
+                if(event)
+                {
+                    SetEvent(event);
+                    CloseHandle(event);
+                }
+            }
+            WriteInitLog(L"[DllMain] InitializeRuntime succeeded, returning TRUE");
+            return TRUE;
+        }
+
+        Log::Write(L"[client] runtime initialization failed");
+        WriteInitLog(L"[DllMain] InitializeRuntime failed, returning TRUE to prevent 1114 crash");
         return TRUE;
     }
-    Log::Write(L"[client] runtime initialization failed");
-    CrashHandler::Shutdown();
-    return FALSE;
+    catch(const std::exception& ex)
+    {
+        std::string err = ex.what();
+        WriteInitLog((L"[DllMain] fatal exception caught: " + std::wstring(err.begin(), err.end())).c_str());
+        return TRUE;
+    }
+    catch(...)
+    {
+        WriteInitLog(L"[DllMain] fatal unknown exception caught, returning TRUE");
+        return TRUE;
+    }
 }

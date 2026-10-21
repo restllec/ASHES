@@ -333,26 +333,53 @@ void InitializeLicense()
         return;
     g_initialized = true;
 
-    g_license.mac = QueryPhysicalMacAddress();
-    std::string guid = ReadMachineGuid();
-
-    uint64_t hash = Fnv1aHash(g_license.mac + "|" + guid);
-    char buf[32]{};
-    std::snprintf(buf, sizeof(buf), "ASH-%04X-%04X",
-        static_cast<unsigned int>((hash >> 16) & 0xFFFF),
-        static_cast<unsigned int>(hash & 0xFFFF));
-    g_license.hwid = buf;
-
-    std::string savedKey = LoadKeyFromFile();
-    if (!savedKey.empty())
+    try
     {
-        g_license.key = savedKey;
-        CheckLicenseOnServer(g_license.hwid, savedKey);
+        g_license.mac = QueryPhysicalMacAddress();
+        std::string guid = ReadMachineGuid();
+
+        uint64_t hash = Fnv1aHash(g_license.mac + "|" + guid);
+        char buf[32]{};
+        std::snprintf(buf, sizeof(buf), "ASH-%04X-%04X",
+            static_cast<unsigned int>((hash >> 16) & 0xFFFF),
+            static_cast<unsigned int>(hash & 0xFFFF));
+        g_license.hwid = buf;
+
+        std::string savedKey = LoadKeyFromFile();
+        if (!savedKey.empty())
+        {
+            g_license.key = savedKey;
+            g_license.is_pro = true;
+            g_license.expire_date = "Проверка...";
+            g_license.status_msg = "PRO (Активация...)";
+
+            // Asynchronous verification to prevent DllMain deadlocks and network timeouts
+            struct VerifyContext { std::string hwid; std::string key; };
+            auto* ctx = new VerifyContext{ g_license.hwid, savedKey };
+            HANDLE hThread = CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
+                auto* c = static_cast<VerifyContext*>(param);
+                if (c)
+                {
+                    CheckLicenseOnServer(c->hwid, c->key);
+                    delete c;
+                }
+                return 0;
+            }, ctx, 0, nullptr);
+            if (hThread)
+                CloseHandle(hThread);
+            else
+                delete ctx;
+        }
+        else
+        {
+            g_license.is_pro = false;
+            g_license.status_msg = "FREE (Базовый доступ)";
+        }
     }
-    else
+    catch (...)
     {
         g_license.is_pro = false;
-        g_license.status_msg = "FREE (Базовый доступ)";
+        g_license.status_msg = "FREE (Локальный доступ)";
     }
 }
 
