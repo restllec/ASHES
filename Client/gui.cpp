@@ -1789,72 +1789,114 @@ HRESULT __stdcall HookResetEx(IDirect3DDevice9Ex* device,
 
 bool InstallDeviceHooks(IDirect3DDevice9* device)
 {
+    if(!device)
+        return false;
     long expected{};
     if(!g_deviceState.compare_exchange_strong(expected, 1))
         return expected == 2;
-    auto** table = *reinterpret_cast<void***>(device);
-    void* resetTarget = table[16];
-    void* presentTarget = table[17];
-    const MH_STATUS resetCreated = MH_CreateHook(resetTarget,
-        reinterpret_cast<void*>(&HookReset), reinterpret_cast<void**>(&g_reset));
-    const MH_STATUS presentCreated = MH_CreateHook(presentTarget,
-        reinterpret_cast<void*>(&HookPresent), reinterpret_cast<void**>(&g_present));
-    const bool ready = resetCreated == MH_OK && presentCreated == MH_OK
-        && MH_EnableHook(resetTarget) == MH_OK && MH_EnableHook(presentTarget) == MH_OK;
-    if(!ready)
+    __try
     {
-        if(resetCreated == MH_OK)
+        auto** table = *reinterpret_cast<void***>(device);
+        if(!table)
         {
-            MH_DisableHook(resetTarget);
-            MH_RemoveHook(resetTarget);
+            g_deviceState.store(0);
+            return false;
         }
-        if(presentCreated == MH_OK)
+        void* resetTarget = table[16];
+        void* presentTarget = table[17];
+        if(!resetTarget || !presentTarget)
         {
-            MH_DisableHook(presentTarget);
-            MH_RemoveHook(presentTarget);
+            g_deviceState.store(0);
+            return false;
         }
-        g_reset = nullptr;
-        g_present = nullptr;
+        const MH_STATUS resetCreated = MH_CreateHook(resetTarget,
+            reinterpret_cast<void*>(&HookReset), reinterpret_cast<void**>(&g_reset));
+        const MH_STATUS presentCreated = MH_CreateHook(presentTarget,
+            reinterpret_cast<void*>(&HookPresent), reinterpret_cast<void**>(&g_present));
+        const bool ready = resetCreated == MH_OK && presentCreated == MH_OK
+            && MH_EnableHook(resetTarget) == MH_OK && MH_EnableHook(presentTarget) == MH_OK;
+        if(!ready)
+        {
+            if(resetCreated == MH_OK)
+            {
+                MH_DisableHook(resetTarget);
+                MH_RemoveHook(resetTarget);
+            }
+            if(presentCreated == MH_OK)
+            {
+                MH_DisableHook(presentTarget);
+                MH_RemoveHook(presentTarget);
+            }
+            g_reset = nullptr;
+            g_present = nullptr;
+        }
+        g_deviceState.store(ready ? 2 : 0);
+        Log::Write(ready ? L"[gui] real DX9 device hooks installed"
+            : L"[gui] real DX9 device hook installation failed");
+        return ready;
     }
-    g_deviceState.store(ready ? 2 : 0);
-    Log::Write(ready ? L"[gui] real DX9 device hooks installed"
-        : L"[gui] real DX9 device hook installation failed");
-    return ready;
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        g_deviceState.store(0);
+        Log::Write(L"[gui] exception during InstallDeviceHooks");
+        return false;
+    }
 }
 
 bool InstallDeviceExHooks(IDirect3DDevice9Ex* device)
 {
+    if(!device)
+        return false;
     long expected{};
     if(!g_deviceExState.compare_exchange_strong(expected, 1))
         return expected == 2;
-    auto** table = *reinterpret_cast<void***>(device);
-    void* presentTarget = table[121];
-    void* resetTarget = table[132];
-    const MH_STATUS presentCreated = MH_CreateHook(presentTarget,
-        reinterpret_cast<void*>(&HookPresentEx), reinterpret_cast<void**>(&g_presentEx));
-    const MH_STATUS resetCreated = MH_CreateHook(resetTarget,
-        reinterpret_cast<void*>(&HookResetEx), reinterpret_cast<void**>(&g_resetEx));
-    const bool ready = presentCreated == MH_OK && resetCreated == MH_OK
-        && MH_EnableHook(presentTarget) == MH_OK && MH_EnableHook(resetTarget) == MH_OK;
-    if(!ready)
+    __try
     {
-        if(presentCreated == MH_OK)
+        auto** table = *reinterpret_cast<void***>(device);
+        if(!table)
         {
-            MH_DisableHook(presentTarget);
-            MH_RemoveHook(presentTarget);
+            g_deviceExState.store(0);
+            return false;
         }
-        if(resetCreated == MH_OK)
+        void* presentTarget = table[121];
+        void* resetTarget = table[132];
+        if(!presentTarget || !resetTarget)
         {
-            MH_DisableHook(resetTarget);
-            MH_RemoveHook(resetTarget);
+            g_deviceExState.store(0);
+            return false;
         }
-        g_presentEx = nullptr;
-        g_resetEx = nullptr;
+        const MH_STATUS presentCreated = MH_CreateHook(presentTarget,
+            reinterpret_cast<void*>(&HookPresentEx), reinterpret_cast<void**>(&g_presentEx));
+        const MH_STATUS resetCreated = MH_CreateHook(resetTarget,
+            reinterpret_cast<void*>(&HookResetEx), reinterpret_cast<void**>(&g_resetEx));
+        const bool ready = presentCreated == MH_OK && resetCreated == MH_OK
+            && MH_EnableHook(presentTarget) == MH_OK && MH_EnableHook(resetTarget) == MH_OK;
+        if(!ready)
+        {
+            if(presentCreated == MH_OK)
+            {
+                MH_DisableHook(presentTarget);
+                MH_RemoveHook(presentTarget);
+            }
+            if(resetCreated == MH_OK)
+            {
+                MH_DisableHook(resetTarget);
+                MH_RemoveHook(resetTarget);
+            }
+            g_presentEx = nullptr;
+            g_resetEx = nullptr;
+        }
+        g_deviceExState.store(ready ? 2 : 0);
+        Log::Write(ready ? L"[gui] real DX9Ex device hooks installed"
+            : L"[gui] real DX9Ex device hook installation failed");
+        return ready;
     }
-    g_deviceExState.store(ready ? 2 : 0);
-    Log::Write(ready ? L"[gui] real DX9Ex device hooks installed"
-        : L"[gui] real DX9Ex device hook installation failed");
-    return ready;
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        g_deviceExState.store(0);
+        Log::Write(L"[gui] exception during InstallDeviceExHooks");
+        return false;
+    }
 }
 
 HRESULT __stdcall HookCreateDevice(IDirect3D9* api, UINT adapter,
@@ -1884,54 +1926,96 @@ HRESULT __stdcall HookCreateDeviceEx(IDirect3D9Ex* api, UINT adapter,
 
 bool InstallFactoryHooks(IDirect3D9* api)
 {
+    if(!api)
+        return false;
     long expected{};
     if(!g_factoryState.compare_exchange_strong(expected, 1))
         return expected == 2;
-    auto** table = *reinterpret_cast<void***>(api);
-    void* target = table[16];
-    const MH_STATUS created = MH_CreateHook(target,
-        reinterpret_cast<void*>(&HookCreateDevice),
-        reinterpret_cast<void**>(&g_createDevice));
-    const bool ready = created == MH_OK && MH_EnableHook(target) == MH_OK;
-    if(!ready)
+    __try
     {
-        if(created == MH_OK)
+        auto** table = *reinterpret_cast<void***>(api);
+        if(!table)
         {
-            MH_DisableHook(target);
-            MH_RemoveHook(target);
+            g_factoryState.store(0);
+            return false;
         }
-        g_createDevice = nullptr;
+        void* target = table[16];
+        if(!target)
+        {
+            g_factoryState.store(0);
+            return false;
+        }
+        const MH_STATUS created = MH_CreateHook(target,
+            reinterpret_cast<void*>(&HookCreateDevice),
+            reinterpret_cast<void**>(&g_createDevice));
+        const bool ready = created == MH_OK && MH_EnableHook(target) == MH_OK;
+        if(!ready)
+        {
+            if(created == MH_OK)
+            {
+                MH_DisableHook(target);
+                MH_RemoveHook(target);
+            }
+            g_createDevice = nullptr;
+        }
+        g_factoryState.store(ready ? 2 : 0);
+        Log::Write(ready ? L"[gui] IDirect3D9::CreateDevice hooked"
+            : L"[gui] IDirect3D9::CreateDevice hook failed");
+        return ready;
     }
-    g_factoryState.store(ready ? 2 : 0);
-    Log::Write(ready ? L"[gui] IDirect3D9::CreateDevice hooked"
-        : L"[gui] IDirect3D9::CreateDevice hook failed");
-    return ready;
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        g_factoryState.store(0);
+        Log::Write(L"[gui] exception during InstallFactoryHooks");
+        return false;
+    }
 }
 
 bool InstallFactoryExHooks(IDirect3D9Ex* api)
 {
+    if(!api)
+        return false;
     long expected{};
     if(!g_factoryExState.compare_exchange_strong(expected, 1))
         return expected == 2;
-    auto** table = *reinterpret_cast<void***>(api);
-    void* target = table[20];
-    const MH_STATUS created = MH_CreateHook(target,
-        reinterpret_cast<void*>(&HookCreateDeviceEx),
-        reinterpret_cast<void**>(&g_createDeviceEx));
-    const bool ready = created == MH_OK && MH_EnableHook(target) == MH_OK;
-    if(!ready)
+    __try
     {
-        if(created == MH_OK)
+        auto** table = *reinterpret_cast<void***>(api);
+        if(!table)
         {
-            MH_DisableHook(target);
-            MH_RemoveHook(target);
+            g_factoryExState.store(0);
+            return false;
         }
-        g_createDeviceEx = nullptr;
+        void* target = table[20];
+        if(!target)
+        {
+            g_factoryExState.store(0);
+            return false;
+        }
+        const MH_STATUS created = MH_CreateHook(target,
+            reinterpret_cast<void*>(&HookCreateDeviceEx),
+            reinterpret_cast<void**>(&g_createDeviceEx));
+        const bool ready = created == MH_OK && MH_EnableHook(target) == MH_OK;
+        if(!ready)
+        {
+            if(created == MH_OK)
+            {
+                MH_DisableHook(target);
+                MH_RemoveHook(target);
+            }
+            g_createDeviceEx = nullptr;
+        }
+        g_factoryExState.store(ready ? 2 : 0);
+        Log::Write(ready ? L"[gui] IDirect3D9Ex::CreateDeviceEx hooked"
+            : L"[gui] IDirect3D9Ex::CreateDeviceEx hook failed");
+        return ready;
     }
-    g_factoryExState.store(ready ? 2 : 0);
-    Log::Write(ready ? L"[gui] IDirect3D9Ex::CreateDeviceEx hooked"
-        : L"[gui] IDirect3D9Ex::CreateDeviceEx hook failed");
-    return ready;
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        g_factoryExState.store(0);
+        Log::Write(L"[gui] exception during InstallFactoryExHooks");
+        return false;
+    }
 }
 
 IDirect3D9* WINAPI HookDirect3DCreate9(UINT sdkVersion)
@@ -2003,10 +2087,15 @@ DWORD WINAPI HookThread(void*)
                 d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
                 d3dpp.hDeviceWindow = dummyHwnd;
                 IDirect3DDevice9* dummyDev = nullptr;
-                if(SUCCEEDED(dummyD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_NULLREF,
-                    dummyHwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &dummyDev))
-                    || SUCCEEDED(dummyD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
-                    dummyHwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &dummyDev)))
+                HRESULT hr = dummyD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_NULLREF,
+                    dummyHwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &dummyDev);
+                if(FAILED(hr) || !dummyDev)
+                {
+                    dummyDev = nullptr;
+                    hr = dummyD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+                        dummyHwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &dummyDev);
+                }
+                if(SUCCEEDED(hr) && dummyDev)
                 {
                     InstallDeviceHooks(dummyDev);
                     dummyDev->Release();
