@@ -114,7 +114,7 @@ bool SaveConfig(bool reportError = true)
 {
     const bool saved = Config::Save(g_directory, g_config);
     if(!saved && reportError)
-        AppendLog(L"[error] DarkFlame.cfg could not be saved");
+        AppendLog(L"[error] Ashes.cfg could not be saved");
     return saved;
 }
 
@@ -811,7 +811,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     const bool dx9Ready = win32Ready && ImGui_ImplDX9_Init(g_device);
     if(!dx9Ready)
     {
-        MessageBoxW(nullptr, L"DarkFlame UI initialization failed.", L"DarkFlame",
+        MessageBoxW(nullptr, L"ASHES UI initialization failed.", L"ASHES",
             MB_OK | MB_ICONERROR);
         if(win32Ready)
             ImGui_ImplWin32_Shutdown();

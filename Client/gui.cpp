@@ -1519,7 +1519,7 @@ void RenderMenu()
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2());
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 0));
-    ImGui::Begin("##dark_flame_menu", nullptr,
+    ImGui::Begin("##ashes_menu", nullptr,
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings
         | ImGuiWindowFlags_NoScrollbar
         | ImGuiWindowFlags_NoScrollWithMouse);

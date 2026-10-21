@@ -103,7 +103,7 @@ namespace
         ClearBootstrapEnvironment();
         if (!mapped)
         {
-            RuntimeLog::Write(L"[agent] DarkFlameClient map failed");
+            RuntimeLog::Write(L"[agent] AshesClient map failed");
             const DWORD error = mapError ? mapError : ERROR_DLL_INIT_FAILED;
             TerminateProcess(processInformation->hProcess, error);
             WaitForSingleObject(processInformation->hProcess, 5000);
@@ -117,7 +117,7 @@ namespace
 
         if (g_clientLoadedEvent)
             SetEvent(g_clientLoadedEvent);
-        RuntimeLog::Write(L"[agent] DarkFlameClient mapped before gta_sa.exe resume");
+        RuntimeLog::Write(L"[agent] AshesClient mapped before gta_sa.exe resume");
         RuntimeLog::Write(exceptionSupport
             ? L"[agent] manual-map exception support registered without PEB entry"
             : L"[agent] manual-map exception support unavailable");
@@ -189,7 +189,7 @@ BOOL WINAPI DllMain(HMODULE module, DWORD reason, void* reserved)
         const std::wstring agentPath = Environment::Read(BootstrapProtocol::AgentPathVariable);
         const std::wstring logDirectory = Environment::Read(
             BootstrapProtocol::LogDirectoryVariable);
-        if (!CrashHandler::Install(module, agentPath, L"DarkFlameAgent",
+        if (!CrashHandler::Install(module, agentPath, L"AshesAgent",
             logDirectory))
         {
             RuntimeLog::Write(L"[agent] crash handler initialization failed");

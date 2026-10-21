@@ -347,7 +347,7 @@ bool InitializeRuntime()
     if(!StartHookWatchdog())
         Log::Write(L"[bootstrap] hook watchdog startup failed");
 
-    Log::Write(L"[bootstrap] DarkFlameClient ready before gta_sa.exe resume");
+    Log::Write(L"[bootstrap] AshesClient ready before gta_sa.exe resume");
     return true;
 }
 }

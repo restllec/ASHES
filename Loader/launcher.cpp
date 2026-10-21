@@ -230,18 +230,18 @@ int Launcher::Run(std::stop_token stop, const LogSink& log)
         return 4;
     }
 
-    log(L"[ok] DarkFlameAgent.dll manually mapped and ready");
+    log(L"[ok] AshesAgent.dll manually mapped and ready");
     log(exceptionSupport
         ? L"[ok] agent exception support registered without PEB entry"
         : L"[warn] agent exception support unavailable");
-    log(L"[info] waiting for DarkFlameClient.dll mapping...");
+    log(L"[info] waiting for AshesClient.dll mapping...");
     const HANDLE waits[]{ipc.ClientLoadedEvent(), process.value};
     while(!stop.stop_requested())
     {
         const DWORD wait = WaitForMultipleObjects(2, waits, FALSE, 50);
         if(wait == WAIT_OBJECT_0)
         {
-            log(L"[ok] DarkFlameClient.dll mapping reported successful");
+            log(L"[ok] AshesClient.dll mapping reported successful");
             return 0;
         }
         if(wait == WAIT_OBJECT_0 + 1)
@@ -309,7 +309,7 @@ int Launcher::InjectOnce(const LogSink& log, DWORD specificPid)
 
     if(isGameProcess)
     {
-        log(L"[info] mapping DarkFlameClient.dll directly into game...");
+        log(L"[info] mapping AshesClient.dll directly into game...");
         injected = ManualMap::Map(process.value, client, &payload,
             sizeof(payload), &exceptionSupport);
         injectionError = GetLastError();
@@ -324,7 +324,7 @@ int Launcher::InjectOnce(const LogSink& log, DWORD specificPid)
     }
     else
     {
-        log(L"[info] mapping DarkFlameAgent.dll into launcher...");
+        log(L"[info] mapping AshesAgent.dll into launcher...");
         injected = ManualMap::Map(process.value, agent, &payload,
             sizeof(payload), &exceptionSupport);
         injectionError = GetLastError();
@@ -345,6 +345,6 @@ int Launcher::InjectOnce(const LogSink& log, DWORD specificPid)
         return 4;
     }
 
-    log(L"[ok] DarkFlame successfully injected into process");
+    log(L"[ok] ASHES successfully injected into process");
     return 0;
 }
