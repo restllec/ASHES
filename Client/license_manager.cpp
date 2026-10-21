@@ -240,7 +240,7 @@ namespace
         // 3 sec timeout so UI doesn't hitch
         WinHttpSetTimeouts(hSession, 1500, 2000, 3000, 3000);
 
-        HINTERNET hConnect = WinHttpConnect(hSession, L"your-domain.vercel.app", INTERNET_DEFAULT_HTTPS_PORT, 0);
+        HINTERNET hConnect = WinHttpConnect(hSession, L"ashes-licensing.vercel.app", INTERNET_DEFAULT_HTTPS_PORT, 0);
         bool verified = false;
         std::string serverError;
         std::string serverExpires;
