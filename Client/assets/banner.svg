@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <!-- Оригинальное фоновое мягкое пепельно-багровое свечение Liner -->
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#3a1518" stop-opacity="0.6" />
+      <stop offset="55%" stop-color="#12090c" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#070709" stop-opacity="1" />
+    </radialGradient>
+
+    <!-- Градиенты для острых граней логотипа (1-в-1 оригинал) -->
+    <linearGradient id="bladeLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#A8ABB8" />
+    </linearGradient>
+
+    <linearGradient id="bladeRight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E2E4EC" />
+      <stop offset="100%" stop-color="#6E7282" />
+    </linearGradient>
+
+    <!-- Фоновые топографические волны лоадера -->
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.02" />
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.02" />
+    </linearGradient>
+
+    <!-- Неоновое свечение для знака -->
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Глубокий черный фон -->
+  <rect width="1280" height="720" fill="#070709" />
+  <rect width="1280" height="720" fill="url(#bgGlow)" />
+
+  <!-- Топографические контурные волны клиента -->
+  <g fill="none" stroke-linecap="round">
+    <path d="M -50 180 C 300 70, 500 290, 800 160 C 1050 50, 1200 250, 1350 200" stroke="url(#waveGrad)" stroke-width="1.2" />
+    <path d="M -50 280 C 250 170, 550 370, 850 240, C 1100 140, 1220 330, 1350 290" stroke="url(#waveGrad)" stroke-width="1.5" />
+    <path d="M -50 400 C 220 310, 580 470, 900 360 C 1130 270, 1250 430, 1350 410" stroke="url(#waveGrad)" stroke-width="1.8" />
+    <path d="M -50 520 C 280 440, 520 580, 870 480 C 1120 400, 1260 550, 1350 530" stroke="url(#waveGrad)" stroke-width="1.4" />
+    <path d="M -50 630 C 320 570, 620 660, 940 590 C 1150 540, 1280 630, 1350 620" stroke="url(#waveGrad)" stroke-width="1.2" />
+  </g>
+
+  <!-- Центрированная оригинальная группа (логотип + текст) -->
+  <g transform="translate(450, 275) scale(1.35)">
+    <!-- ВЕКТОРНЫЙ ЗНАК ASHES -->
+    <g filter="url(#softGlow)">
+      <!-- Левое острое крыло буквы А -->
+      <polygon points="55,8 12,108 34,108 55,56" fill="url(#bladeLeft)" />
+      <!-- Внешняя левая малая грань -->
+      <polygon points="52,15 4,92 12,108 55,8" fill="#FFFFFF" opacity="0.85" />
+
+      <!-- Правое острое крыло буквы А -->
+      <polygon points="59,8 59,56 80,108 102,108" fill="url(#bladeRight)" />
+      <!-- Внешняя правая малая грань -->
+      <polygon points="62,15 110,92 102,108 59,8" fill="#9498A8" opacity="0.7" />
+
+      <!-- Центральный парящий ромб-искра (Ember) -->
+      <polygon points="57,62 45,84 57,106 69,84" fill="#FFFFFF" />
+    </g>
+
+    <!-- Текстовый блок справа от знака -->
+    <text x="132" y="88" font-family="&#39;Inter&#39;, &#39;Segoe UI&#39;, &#39;Montserrat&#39;, sans-serif" font-size="72" font-weight="800" fill="#FFFFFF" letter-spacing="-2">ASHES</text>
+    
+    <!-- Подпись автора снизу -->
+    <text x="136" y="122" font-family="&#39;Inter&#39;, &#39;Segoe UI&#39;, sans-serif" font-size="20" font-weight="500" fill="#8A8E9E" letter-spacing="0.5">
+      automation suite <tspan fill="#FFFFFF" font-weight="600">by restleSS</tspan>
+    </text>
+  </g>
+</svg>
