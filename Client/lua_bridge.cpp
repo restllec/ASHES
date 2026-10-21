@@ -1455,41 +1455,82 @@ void DrainThreadRequests()
     }
 }
 
+int GetLuaResourceIdByName(std::string_view name)
+{
+    if(name == "TramBot.lua") return IDR_LUA_TRAMBOT;
+    if(name == "PlowBot.clean.lua") return IDR_LUA_PLOWBOT_CLEAN;
+    if(name == "PlowBot.lua") return IDR_LUA_PLOWBOT;
+    if(name == "JBKBot.lua") return IDR_LUA_JBKBOT;
+    if(name == "PilotTelemetry.lua") return IDR_LUA_PILOT;
+    if(name == "JTU_BOT_DESIGN.lua" || name == "jtu_bot.lua" || name == "jtu_bot_from_downloads.lua") return IDR_LUA_JTUBOT;
+    if(name == "polivbot.lua" || name == "polivbot_from_downloads.lua") return IDR_LUA_POLIVBOT;
+    if(name == "tobacco.lua") return IDR_LUA_TOBACCO;
+    return 0;
+}
+
+bool ReadEmbeddedLuaResource(std::string_view name, std::string& code)
+{
+    const int resId = GetLuaResourceIdByName(name);
+    if(!resId)
+        return false;
+
+    MEMORY_BASIC_INFORMATION memory{};
+    if(!VirtualQuery(reinterpret_cast<void*>(&ReadEmbeddedLuaResource), &memory, sizeof(memory)) || !memory.AllocationBase)
+        return false;
+
+    const HMODULE module = static_cast<HMODULE>(memory.AllocationBase);
+    HRSRC res = FindResourceW(module, MAKEINTRESOURCEW(resId), RT_RCDATA);
+    if(!res)
+        return false;
+
+    const DWORD size = SizeofResource(module, res);
+    HGLOBAL loaded = LoadResource(module, res);
+    const char* data = loaded ? static_cast<const char*>(LockResource(loaded)) : nullptr;
+    if(!data || !size)
+        return false;
+
+    code.assign(data, size);
+    return true;
+}
+
 bool ReadLuaScript(const std::wstring& path, std::string_view name,
     std::string& code, std::string& error)
 {
     code.clear();
-    if(path.empty())
+    bool loaded = false;
+    if(!path.empty())
     {
-        error = "DarkFlame directory is unavailable";
-        return false;
+        HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if(file != INVALID_HANDLE_VALUE)
+        {
+            LARGE_INTEGER size{};
+            if(GetFileSizeEx(file, &size) && size.QuadPart > 0
+                && size.QuadPart <= 4 * 1024 * 1024)
+            {
+                code.resize(static_cast<std::size_t>(size.QuadPart));
+                DWORD read{};
+                if(ReadFile(file, code.data(), static_cast<DWORD>(code.size()),
+                    &read, nullptr) && read == static_cast<DWORD>(code.size()))
+                {
+                    loaded = true;
+                }
+            }
+            CloseHandle(file);
+        }
     }
-    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if(file == INVALID_HANDLE_VALUE)
-    {
-        error = std::string(name) + " not found beside DarkFlame.exe";
-        return false;
-    }
-    LARGE_INTEGER size{};
-    if(!GetFileSizeEx(file, &size) || size.QuadPart <= 0
-        || size.QuadPart > 4 * 1024 * 1024)
-    {
-        CloseHandle(file);
-        error = std::string(name) + " has an invalid size";
-        return false;
-    }
-    code.resize(static_cast<std::size_t>(size.QuadPart));
-    DWORD read{};
-    const bool loaded = ReadFile(file, code.data(), static_cast<DWORD>(code.size()),
-        &read, nullptr) && read == static_cast<DWORD>(code.size());
-    CloseHandle(file);
     if(!loaded)
     {
-        code.clear();
-        error = std::string(name) + " read failed";
-        return false;
+        if(ReadEmbeddedLuaResource(name, code))
+        {
+            loaded = true;
+        }
+        else
+        {
+            error = std::string(name) + " not found on disk or embedded resources";
+            return false;
+        }
     }
     if(code.size() >= 3 && static_cast<unsigned char>(code[0]) == 0xEF
         && static_cast<unsigned char>(code[1]) == 0xBB
