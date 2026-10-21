@@ -214,12 +214,12 @@ inline std::string LoadSavedLicense(const std::wstring& directory)
 inline bool ValidateKey(State& state, const std::string& key)
 {
     state.key = key;
-    if (key == "ASHES-DEV-RESTLESS" || key == "DF-DEV-RESTLESS")
+    if (key.empty())
     {
-        state.is_pro = true;
-        state.expire_date = "DEV / Без ограничений";
-        state.status_msg = "PRO (Активирован дев-ключ)";
-        return true;
+        state.is_pro = false;
+        state.expire_date = "Не активирована";
+        state.status_msg = "FREE (Базовый доступ)";
+        return false;
     }
 
     if ((key.rfind("ASHES-PRO-", 0) == 0 && key.size() >= 14) ||
@@ -233,7 +233,7 @@ inline bool ValidateKey(State& state, const std::string& key)
 
     state.is_pro = false;
     state.expire_date = "Не активирована";
-    state.status_msg = key.empty() ? "FREE (Базовый доступ)" : "Неверный ключ (требуется ASHES-PRO-...)";
+    state.status_msg = "Неверный ключ (требуется ASHES-PRO-...)";
     return false;
 }
 }

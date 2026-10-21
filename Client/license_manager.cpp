@@ -206,16 +206,6 @@ namespace
 
     bool CheckLicenseOnServer(const std::string& hwid, const std::string& key)
     {
-        // Dev key check
-        if (key == "ASHES-DEV-RESTLESS" || key == "DF-DEV-RESTLESS")
-        {
-            g_license.is_pro = true;
-            g_license.expire_date = "DEV / Без ограничений";
-            g_license.status_msg = "PRO (Активирован дев-ключ)";
-            Log::Write(L"[license] Developer PRO license activated");
-            return true;
-        }
-
         // Standard PRO prefix check
         if ((key.rfind("ASHES-PRO-", 0) != 0 || key.size() < 14) &&
             (key.rfind("DF-PRO-", 0) != 0 || key.size() < 12))
