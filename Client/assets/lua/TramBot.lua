@@ -281,9 +281,15 @@ local sessionStartTick
 local playerLevel
 local autoDistance = true
 local distanceMode = 2 -- 1: 1 вагон (~18м), 2: 2 вагона (~36м), 3: 3 вагона (~54м)
+local autoLights = false
+local silentChat = false
 
 -- Shared helpers and event registration.
 local function notify(text, errorMessage)
+    if silentChat and not errorMessage then
+        api.log(tostring(text))
+        return
+    end
     outputChatBox((errorMessage and "#FF5555[TramBot] " or "#55FF88[TramBot] ") .. tostring(text), 255, 255, 255, true)
 end
 
@@ -1310,10 +1316,12 @@ local function queueLightSequence(keys)
 end
 
 local function startCruiseLights()
+    if not autoLights then return end
     queueLightSequence({"L", "L", "K"})
 end
 
 local function stopCruiseLights()
+    if not autoLights then return end
     queueLightSequence({"L", "K"})
 end
 
@@ -1607,6 +1615,8 @@ local function pushNativeState()
     api.updateState("autodist", autoDistance and "1" or "0")
     api.updateState("distmode", tostring(distanceMode))
     api.updateState("autostop_min", tostring(autoStopMinutes))
+    api.updateState("autolights", autoLights and "1" or "0")
+    api.updateState("silent_chat", silentChat and "1" or "0")
     api.updateState("route", routeName)
     api.updateState("direction", direction)
     api.updateState("status", state)
@@ -1657,6 +1667,16 @@ local function handleCommand(command)
     elseif name == "autostop_min" then
         autoStopMinutes = tonumber(value) or 0
         api.updateState("autostop_min", tostring(autoStopMinutes))
+    elseif name == "autolights" then
+        autoLights = value == "1"
+        api.updateState("autolights", autoLights and "1" or "0")
+    elseif name == "silent_chat" then
+        silentChat = value == "1"
+        api.updateState("silent_chat", silentChat and "1" or "0")
+    elseif name == "clear_chat" then
+        if clearChatBox then
+            clearChatBox()
+        end
     elseif name == "route" then
         startJob(value)
     elseif name == "save_marker" then

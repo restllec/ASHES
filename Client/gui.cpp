@@ -160,6 +160,8 @@ struct TramState
     bool autoDistance{true};
     int distanceMode{2}; // 1 = 1 вагон (~18м), 2 = 2 вагона (~36м), 3 = 3 вагона (~54м)
     int autoStopMinutes{180}; // 180 мин (3 ч), 0 = без ограничений
+    bool autoLights{false}; // Авто-включение света (L, K)
+    bool silentChat{false}; // Скрыть сообщения бота в чате (тихий режим)
 };
 TramState g_tramState;
 TramState g_visibleTramState;
@@ -851,22 +853,26 @@ std::wstring GetSettingsIniPath()
     return L"settings.ini";
 }
 
-void LoadTramSettings(int& autoStopMin, int& distMode, bool& autoDist, int& trampDistMode, bool& trampAutoDist)
+void LoadTramSettings(int& autoStopMin, int& distMode, bool& autoDist, int& trampDistMode, bool& trampAutoDist, bool& autoLights, bool& silentChat)
 {
     std::wstring ini = GetSettingsIniPath();
     autoStopMin = GetPrivateProfileIntW(L"TramBot", L"AutoStopMinutes", 180, ini.c_str());
     distMode = GetPrivateProfileIntW(L"TramBot", L"DistanceMode", 2, ini.c_str());
     autoDist = GetPrivateProfileIntW(L"TramBot", L"AutoDistance", 1, ini.c_str()) != 0;
+    autoLights = GetPrivateProfileIntW(L"TramBot", L"AutoLights", 0, ini.c_str()) != 0;
+    silentChat = GetPrivateProfileIntW(L"TramBot", L"SilentChat", 0, ini.c_str()) != 0;
     trampDistMode = GetPrivateProfileIntW(L"PolivTram", L"DistanceMode", 2, ini.c_str());
     trampAutoDist = GetPrivateProfileIntW(L"PolivTram", L"AutoDistance", 1, ini.c_str()) != 0;
 }
 
-void SaveTramSettings(int autoStopMin, int distMode, bool autoDist)
+void SaveTramSettings(int autoStopMin, int distMode, bool autoDist, bool autoLights, bool silentChat)
 {
     std::wstring ini = GetSettingsIniPath();
     WritePrivateProfileStringW(L"TramBot", L"AutoStopMinutes", std::to_wstring(autoStopMin).c_str(), ini.c_str());
     WritePrivateProfileStringW(L"TramBot", L"DistanceMode", std::to_wstring(distMode).c_str(), ini.c_str());
     WritePrivateProfileStringW(L"TramBot", L"AutoDistance", autoDist ? L"1" : L"0", ini.c_str());
+    WritePrivateProfileStringW(L"TramBot", L"AutoLights", autoLights ? L"1" : L"0", ini.c_str());
+    WritePrivateProfileStringW(L"TramBot", L"SilentChat", silentChat ? L"1" : L"0", ini.c_str());
 }
 
 void SavePolivTramSettings(int distMode, bool autoDist)
@@ -885,10 +891,12 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     TramState& state = g_visibleTramState;
     if(!s_settingsLoaded)
     {
-        LoadTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.trampDistanceMode, state.trampAutoDistance);
+        LoadTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.trampDistanceMode, state.trampAutoDistance, state.autoLights, state.silentChat);
         g_tramState.autoStopMinutes = state.autoStopMinutes;
         g_tramState.distanceMode = state.distanceMode;
         g_tramState.autoDistance = state.autoDistance;
+        g_tramState.autoLights = state.autoLights;
+        g_tramState.silentChat = state.silentChat;
         g_tramState.trampDistanceMode = state.trampDistanceMode;
         g_tramState.trampAutoDistance = state.trampAutoDistance;
         s_settingsLoaded = true;
@@ -948,6 +956,24 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 
         if(XonePlashkaToggle("Игнорировать светофоры", &state.traffic, scale))
             QueueTramCommand(std::string("traffic:") + (state.traffic ? "1" : "0"));
+        if(XonePlashkaToggle("Тихий режим (без спама в чат)", &state.silentChat, scale))
+        {
+            {
+                std::scoped_lock lock(g_bridgeMutex);
+                g_tramState.silentChat = state.silentChat;
+            }
+            QueueTramCommand(std::string("silent_chat:") + (state.silentChat ? "1" : "0"));
+            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.autoLights, state.silentChat);
+        }
+        if(XonePlashkaToggle("Авто-свет (L, K)", &state.autoLights, scale))
+        {
+            {
+                std::scoped_lock lock(g_bridgeMutex);
+                g_tramState.autoLights = state.autoLights;
+            }
+            QueueTramCommand(std::string("autolights:") + (state.autoLights ? "1" : "0"));
+            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.autoLights, state.silentChat);
+        }
         if(XonePlashkaToggle("Режим отладки", &state.debug, scale))
             QueueTramCommand(std::string("debug:") + (state.debug ? "1" : "0"));
         if(XonePlashkaToggle("Сирена (ДТП / админ)", &state.siren, scale))
@@ -962,7 +988,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
                 g_tramState.autoDistance = state.autoDistance;
             }
             QueueTramCommand(std::string("autodist:") + (state.autoDistance ? "1" : "0"));
-            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance);
+            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.autoLights, state.silentChat);
         }
 
         static const char* s_distOptions[] = { "1 ваг. (~18м)", "2 ваг. (~36м)", "3 ваг. (~54м)" };
@@ -975,7 +1001,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
                 g_tramState.distanceMode = state.distanceMode;
             }
             QueueTramCommand("distmode:" + std::to_string(state.distanceMode));
-            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance);
+            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.autoLights, state.silentChat);
         }
 
         static const int s_autoStopValues[] = { 0, 15, 30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 480, 600, 720 };
@@ -1000,7 +1026,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
                 g_tramState.autoStopMinutes = state.autoStopMinutes;
             }
             QueueTramCommand("autostop_min:" + std::to_string(state.autoStopMinutes));
-            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance);
+            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.autoLights, state.silentChat);
         }
 
         ImGui::Spacing();
@@ -1017,6 +1043,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         if(XoneButton("ТП Прива-8", scale, false, routeBtnW, 32.0f)) QueueTramCommand("route:priva8");
 
         ImGui::Spacing();
+        if(XoneButton("Очистить чат", scale, false, -1.0f, 32.0f)) QueueTramCommand("clear_chat");
         if(XoneButton("Калибровщик", scale, false, -1.0f, 32.0f)) QueueTramCommand("calibrate");
         if(XoneButton("Тест сирены", scale, false, -1.0f, 32.0f)) QueueTramCommand("test_siren");
         if(XoneButton("Экстренный стоп", scale, false, -1.0f, 32.0f)) QueueTramCommand("force_stop");
@@ -2485,6 +2512,8 @@ void GuiUpdateTramState(std::string_view key, std::string_view value)
     else if(key == "autodist") g_tramState.autoDistance = enabled;
     else if(key == "distmode") g_tramState.distanceMode = std::atoi(text.c_str());
     else if(key == "autostop_min") g_tramState.autoStopMinutes = std::atoi(text.c_str());
+    else if(key == "autolights") g_tramState.autoLights = enabled;
+    else if(key == "silent_chat") g_tramState.silentChat = enabled;
     else return;
     g_tramDirty = true;
 }

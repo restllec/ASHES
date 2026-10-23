@@ -143,6 +143,8 @@ local errorStopped = false
 -- ============================================================
 
 local DEBUG = true -- пишет каждый шаг бота в консоль (F8)
+local autoLights = false
+local silentChat = false
 
 local function log(text)
     lastLog = tostring(text)
@@ -157,7 +159,9 @@ end
 
 -- Сообщение в чат (только важные)
 local function chatInfo(text)
-    outputChatBox("[TramPolivBot] " .. tostring(text), 255, 255, 255)
+    if not silentChat then
+        outputChatBox("[TramPolivBot] " .. tostring(text), 255, 255, 255)
+    end
     log(text)
 end
 
@@ -342,7 +346,7 @@ end
 local startJob
 
 local function startHeadlights()
-    if not running then return end
+    if not running or not autoLights then return end
     notify("Включаем фары: L + L")
 
     headlightTimer1 = setTimer(function()
@@ -694,11 +698,13 @@ local function startPreparation()
     headlightTimer1 = setTimer(function()
         if not running then return end
 
-        for n = 1, LIGHT_PRESSES do
-            setTimer(function()
-                if not running then return end
-                pressKey("L")
-            end, (n - 1) * 300, 1)
+        if autoLights then
+            for n = 1, LIGHT_PRESSES do
+                setTimer(function()
+                    if not running then return end
+                    pressKey("L")
+                end, (n - 1) * 300, 1)
+            end
         end
 
         -- 2) затем поливалка путей (2)
@@ -1258,6 +1264,16 @@ setTimer(function()
                 autoDistance = false
             elseif cmd:sub(1, 15) == "tramp_distmode:" then
                 distanceMode = tonumber(cmd:sub(16)) or 2
+            elseif cmd == "clear_chat" then
+                if clearChatBox then clearChatBox() end
+            elseif cmd == "autolights:1" then
+                autoLights = true
+            elseif cmd == "autolights:0" then
+                autoLights = false
+            elseif cmd == "silent_chat:1" then
+                silentChat = true
+            elseif cmd == "silent_chat:0" then
+                silentChat = false
             end
             cmd = api.takeCommand()
         end
