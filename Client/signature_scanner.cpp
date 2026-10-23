@@ -78,7 +78,29 @@ std::vector<SignatureScanner::PatternByte> SignatureScanner::Parse(std::string_v
 
 std::uintptr_t SignatureScanner::Find(std::string_view idaPattern) const
 {
-    (void)idaPattern;
-    // Open Source / Anti-Rip Stub: scanning disabled
+    const auto pattern = Parse(idaPattern);
+    if (pattern.empty())
+        return 0;
+
+    for (const MemoryRange& range : m_ranges)
+    {
+        if (!range.base || pattern.size() > range.size)
+            continue;
+        const std::size_t last = range.size - pattern.size();
+        for (std::size_t offset = 0; offset <= last; ++offset)
+        {
+            bool matches = true;
+            for (std::size_t index = 0; index < pattern.size(); ++index)
+            {
+                if (!pattern[index].wildcard && range.base[offset + index] != pattern[index].value)
+                {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches)
+                return reinterpret_cast<std::uintptr_t>(range.base + offset);
+        }
+    }
     return 0;
 }

@@ -343,3 +343,67 @@ inline bool XonePlashkaInt(const char* label, int* value, int minVal, int maxVal
     ImGui::Dummy(ImVec2(w, h + 6.0f * scale));
     return changed;
 }
+
+inline bool XonePlashkaChoice(const char* label, int* selectedIndex, const char* const* options, int optionCount, float scale, float height = 40.0f)
+{
+    float w = ImGui::GetContentRegionAvail().x;
+    float h = height * scale;
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    XoneThemeColors c = GetCurrentTheme();
+
+    ImRect bb(pos, ImVec2(pos.x + w, pos.y + h));
+    draw->AddRectFilled(bb.Min, bb.Max, c.plashkaBg, 7.0f * scale);
+    draw->AddRect(bb.Min, bb.Max, c.plashkaBorder, 7.0f * scale, 0, 1.0f);
+
+    if(!options || optionCount <= 0)
+        return false;
+
+    int idx = std::clamp(*selectedIndex, 0, optionCount - 1);
+    const char* valText = options[idx];
+    const ImVec2 valSize = ImGui::CalcTextSize(valText);
+
+    float btnSize = 22.0f * scale;
+    float gap = 4.0f * scale;
+    float rightMargin = 10.0f * scale;
+    float textW = 118.0f * scale;
+    float plusBtnX = pos.x + w - rightMargin - btnSize;
+    float textStartX = plusBtnX - gap - textW;
+    float minusBtnX = textStartX - gap - btnSize;
+    float btnY = pos.y + (h - btnSize) * 0.5f;
+
+    draw->PushClipRect(pos, ImVec2(minusBtnX - 6.0f * scale, pos.y + h), true);
+    const ImVec2 labelSize = ImGui::CalcTextSize(label);
+    draw->AddText(ImVec2(pos.x + 14.0f * scale, pos.y + (h - labelSize.y) * 0.5f), c.textPrimary, label);
+    draw->PopClipRect();
+
+    bool changed = false;
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_Button, c.buttonBg);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, c.buttonHover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, c.buttonActive);
+
+    ImGui::SetCursorScreenPos(ImVec2(minusBtnX, btnY));
+    std::string minusId = std::string("<##") + label;
+    if(ImGui::Button(minusId.c_str(), ImVec2(btnSize, btnSize)))
+    {
+        if(*selectedIndex > 0) { (*selectedIndex)--; changed = true; }
+    }
+
+    draw->AddText(ImVec2(textStartX + (textW - valSize.x) * 0.5f, pos.y + (h - valSize.y) * 0.5f),
+        c.textPrimary, valText);
+
+    ImGui::SetCursorScreenPos(ImVec2(plusBtnX, btnY));
+    std::string plusId = std::string(">##") + label;
+    if(ImGui::Button(plusId.c_str(), ImVec2(btnSize, btnSize)))
+    {
+        if(*selectedIndex < optionCount - 1) { (*selectedIndex)++; changed = true; }
+    }
+
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar();
+
+    ImGui::SetCursorScreenPos(pos);
+    ImGui::Dummy(ImVec2(w, h + 6.0f * scale));
+    return changed;
+}

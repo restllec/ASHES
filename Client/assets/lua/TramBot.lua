@@ -275,10 +275,12 @@ local updateNativeMenu
 local stopBot
 local cancelCalibration
 local onMarkerHit
-local MAX_WORK_TIME_MS = 3 * 60 * 60 * 1000
+local autoStopMinutes = 180
 local autoStopTimer
 local sessionStartTick
 local playerLevel
+local autoDistance = true
+local distanceMode = 2 -- 1: 1 вагон (~18м), 2: 2 вагона (~36м), 3: 3 вагона (~54м)
 
 -- Shared helpers and event registration.
 local function notify(text, errorMessage)
@@ -1029,6 +1031,46 @@ local function beginBraking(point, position, distance, triggerDistance)
     end
 end
 
+local function checkTrainDistance()
+    if not autoDistance or not isElement(train) then
+        return nil
+    end
+    local myX, myY, myZ = getElementPosition(train)
+    local _, _, myRotZ = getElementRotation(train)
+    local rad = math.rad(myRotZ)
+    local fwdX = -math.sin(rad)
+    local fwdY = math.cos(rad)
+
+    local closestDist = 999
+    local found = false
+    local vehicles = getElementsByType("vehicle")
+    for _, veh in ipairs(vehicles) do
+        if veh ~= train and isElement(veh) and getVehicleType(veh) == "Train" then
+            local tx, ty, tz = getElementPosition(veh)
+            local dx = tx - myX
+            local dy = ty - myY
+            local dist = math.sqrt(dx * dx + dy * dy)
+            if dist <= 65 and dist > 1.0 then
+                local dot = dx * fwdX + dy * fwdY
+                if dot > 0 then
+                    local _, _, tgtRotZ = getElementRotation(veh)
+                    local diffAngle = math.abs((myRotZ - tgtRotZ + 180) % 360 - 180)
+                    if diffAngle <= 60 then
+                        if dist < closestDist then
+                            closestDist = dist
+                            found = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if found then
+        return closestDist
+    end
+    return nil
+end
+
 -- Main driving state machine.
 local function onBrakeRender()
     if not botEnabled then
@@ -1212,6 +1254,23 @@ local function onBrakeRender()
         end
     end
 
+    if autoDistance and isElement(train) then
+        local aheadDist = checkTrainDistance()
+        if aheadDist then
+            local distCoast = (distanceMode == 1 and 20) or (distanceMode == 3 and 56) or 38
+            local distBrake = (distanceMode == 1 and 15) or (distanceMode == 3 and 44) or 28
+            if aheadDist <= distBrake then
+                desiredW = false
+                desiredS = true
+                debugRate("dist_brake", 1500, string.format("Авто-дистанция: ТОРМОЗ! Состав впереди: %.1fм (порог <= %.1fм)", aheadDist, distBrake))
+            elseif aheadDist <= distCoast then
+                desiredW = false
+                desiredS = false
+                debugRate("dist_coast", 1500, string.format("Авто-дистанция: НАКАТ! Состав впереди: %.1fм (порог %.1f-%.1fм)", aheadDist, distBrake, distCoast))
+            end
+        end
+    end
+
     debugChange("drive", tostring(desiredW) .. ":" .. tostring(desiredS),
         string.format("Команды движения: W=%s, S=%s", tostring(desiredW), tostring(desiredS)))
     safeDriveKey("W", desiredW)
@@ -1317,16 +1376,27 @@ local function startBot()
     startCruiseLights()
     sessionStartTick = getTickCount()
     playerLevel = getPlayerLevel()
-    notify("Бот включен (таймер автостопа: 3 ч, LVL: " .. tostring(playerLevel) .. ").")
-    debugOutput("Бот запущен; первая цель=" .. pointText(activeRoute[1]))
-    if autoStopTimer and isTimer(autoStopTimer) then
-        killTimer(autoStopTimer)
-    end
-    autoStopTimer = setTimer(function()
-        if botEnabled then
-            stopBot("Лимит времени (3 ч) исчерпан — автостоп.")
+    if autoStopMinutes and autoStopMinutes > 0 then
+        local hoursText = string.format("%d мин", autoStopMinutes)
+        if autoStopMinutes % 60 == 0 then
+            hoursText = string.format("%d ч", autoStopMinutes / 60)
         end
-    end, MAX_WORK_TIME_MS, 1)
+        notify(string.format("Бот включен (автостоп: %s, LVL: %s).", hoursText, tostring(playerLevel)))
+        if autoStopTimer and isTimer(autoStopTimer) then
+            killTimer(autoStopTimer)
+        end
+        autoStopTimer = setTimer(function()
+            if botEnabled then
+                stopBot(string.format("Лимит времени (%s) исчерпан — автостоп.", hoursText))
+            end
+        end, autoStopMinutes * 60 * 1000, 1)
+    else
+        notify("Бот включен (автостоп: без ограничений, LVL: " .. tostring(playerLevel) .. ").")
+        if autoStopTimer and isTimer(autoStopTimer) then
+            killTimer(autoStopTimer)
+            autoStopTimer = nil
+        end
+    end
     if updateNativeMenu then
         updateNativeMenu()
     end
@@ -1534,6 +1604,9 @@ local function pushNativeState()
     api.updateState("debug", debugEnabled and "1" or "0")
     api.updateState("siren", sirenEnabled and "1" or "0")
     api.updateState("force", forceStopper and "1" or "0")
+    api.updateState("autodist", autoDistance and "1" or "0")
+    api.updateState("distmode", tostring(distanceMode))
+    api.updateState("autostop_min", tostring(autoStopMinutes))
     api.updateState("route", routeName)
     api.updateState("direction", direction)
     api.updateState("status", state)
@@ -1575,6 +1648,15 @@ local function handleCommand(command)
         sirenEnabled = value == "1"
     elseif name == "force" then
         forceStopper = value == "1"
+    elseif name == "autodist" then
+        autoDistance = value == "1"
+        api.updateState("autodist", autoDistance and "1" or "0")
+    elseif name == "distmode" then
+        distanceMode = tonumber(value) or 2
+        api.updateState("distmode", tostring(distanceMode))
+    elseif name == "autostop_min" then
+        autoStopMinutes = tonumber(value) or 0
+        api.updateState("autostop_min", tostring(autoStopMinutes))
     elseif name == "route" then
         startJob(value)
     elseif name == "save_marker" then

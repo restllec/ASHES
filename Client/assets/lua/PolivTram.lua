@@ -41,6 +41,8 @@ local BRAKE_SPEEDS = { 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.5
 local BRAKE_DISTS  = { 2.74, 5.67, 9.98, 15.49, 22.18, 30.00, 39.15, 49.21, 60.46, 60.44, 60.48, 60.45 }
 local brakeDistance = 2 -- запас (м) к тормозному пути (1–15), меняется в панели (в TramBot у маркера запас 2 м)
 local CREEP_SPEED = 0.03 -- если почти встали, не доехав до метки — подталкиваем на W
+local autoDistance = true
+local distanceMode = 2 -- 1: 1 ваг (~18м), 2: 2 ваг (~36м), 3: 3 ваг (~54м)
 
 -- Маршрут: { позиция на пути, тип, состояние }
 --   "marker"  — остановка (стоим DOOR_WAIT)
@@ -188,6 +190,46 @@ local function findTrain()
     if isElement(vehicle) then
         train = vehicle
         return vehicle
+    end
+    return nil
+end
+
+local function checkTrainDistance()
+    if not autoDistance then return nil end
+    local veh = findTrain()
+    if not isElement(veh) then return nil end
+    local myX, myY, myZ = getElementPosition(veh)
+    local _, _, myRotZ = getElementRotation(veh)
+    local rad = math.rad(myRotZ)
+    local fwdX = -math.sin(rad)
+    local fwdY = math.cos(rad)
+
+    local closestDist = 999
+    local found = false
+    local vehicles = getElementsByType("vehicle")
+    for _, other in ipairs(vehicles) do
+        if other ~= veh and isElement(other) and getVehicleType(other) == "Train" then
+            local tx, ty, tz = getElementPosition(other)
+            local dx = tx - myX
+            local dy = ty - myY
+            local dist = math.sqrt(dx * dx + dy * dy)
+            if dist <= 65 and dist > 1.0 then
+                local dot = dx * fwdX + dy * fwdY
+                if dot > 0 then
+                    local _, _, tgtRotZ = getElementRotation(other)
+                    local diffAngle = math.abs((myRotZ - tgtRotZ + 180) % 360 - 180)
+                    if diffAngle <= 60 then
+                        if dist < closestDist then
+                            closestDist = dist
+                            found = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if found then
+        return closestDist
     end
     return nil
 end
@@ -504,6 +546,23 @@ local function movementTick()
 
     local position = getPosition()
     if not position then return end
+
+    if autoDistance then
+        local aheadDist = checkTrainDistance()
+        if aheadDist then
+            local distCoast = (distanceMode == 1 and 20) or (distanceMode == 3 and 56) or 38
+            local distBrake = (distanceMode == 1 and 15) or (distanceMode == 3 and 44) or 28
+            if aheadDist <= distBrake then
+                keyUp("W")
+                keyDown("S")
+                return
+            elseif aheadDist <= distCoast then
+                keyUp("W")
+                keyUp("S")
+                return
+            end
+        end
+    end
 
     local point = stops[stopIndex]
     if not point then
@@ -1193,6 +1252,12 @@ setTimer(function()
                 ignoreTraffic = true
             elseif cmd == "tramp_traffic:0" then
                 ignoreTraffic = false
+            elseif cmd == "tramp_autodist:1" then
+                autoDistance = true
+            elseif cmd == "tramp_autodist:0" then
+                autoDistance = false
+            elseif cmd:sub(1, 15) == "tramp_distmode:" then
+                distanceMode = tonumber(cmd:sub(16)) or 2
             end
             cmd = api.takeCommand()
         end
@@ -1216,6 +1281,8 @@ setTimer(function()
         api.updateState("tramp_brake", tostring(brakeDistance))
         api.updateState("tramp_traffic", ignoreTraffic and "1" or "0")
         api.updateState("tramp_sprinkler", sprinklerOn and "1" or "0")
+        api.updateState("tramp_autodist", autoDistance and "1" or "0")
+        api.updateState("tramp_distmode", tostring(distanceMode or 2))
         if running then
             api.updateState("status", phaseText())
             api.updateState("bot", "1")

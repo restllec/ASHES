@@ -150,11 +150,16 @@ struct TramState
     int trampBrake{3};
     bool trampTraffic{false};
     bool trampSprinkler{false};
+    bool trampAutoDistance{true};
+    int trampDistanceMode{2};
     std::string route{"не выбран"};
     std::string direction{"forward"};
     std::string status{"ожидание ресурса"};
     std::string money{"0"};
     std::string catcher{"не зарегистрирован"};
+    bool autoDistance{true};
+    int distanceMode{2}; // 1 = 1 вагон (~18м), 2 = 2 вагона (~36м), 3 = 3 вагона (~54м)
+    int autoStopMinutes{180}; // 180 мин (3 ч), 0 = без ограничений
 };
 TramState g_tramState;
 TramState g_visibleTramState;
@@ -485,21 +490,35 @@ void ConfigureFonts()
     ImFont* mainFont = io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\segoeui.ttf", 14.0f, nullptr, glyphs);
     if(!mainFont)
+        mainFont = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\arial.ttf", 14.0f, nullptr, glyphs);
+    if(!mainFont)
         mainFont = io.Fonts->AddFontDefault();
     io.FontDefault = mainFont;
 
     g_titleFont = io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\segoeuib.ttf", 16.0f, nullptr, glyphs);
+    if(!g_titleFont)
+        g_titleFont = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\arialbd.ttf", 16.0f, nullptr, glyphs);
+
     g_tabFont = io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\segoeuib.ttf", 14.0f, nullptr, glyphs);
+    if(!g_tabFont)
+        g_tabFont = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\arialbd.ttf", 14.0f, nullptr, glyphs);
+
     g_buttonFont = io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\segoeuib.ttf", 15.0f, nullptr, glyphs);
+    if(!g_buttonFont)
+        g_buttonFont = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\arialbd.ttf", 15.0f, nullptr, glyphs);
+
     g_codeFont = io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\consola.ttf", 13.0f, nullptr, glyphs);
-    if(!g_titleFont) g_titleFont = mainFont;
-    if(!g_tabFont) g_tabFont = mainFont;
-    if(!g_buttonFont) g_buttonFont = mainFont;
-    if(!g_codeFont) g_codeFont = mainFont;
+    if(!g_codeFont)
+        g_codeFont = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\cour.ttf", 13.0f, nullptr, glyphs);
+
+    if(!g_titleFont) g_titleFont = mainFont ? mainFont : io.Fonts->AddFontDefault();
+    if(!g_tabFont) g_tabFont = mainFont ? mainFont : io.Fonts->AddFontDefault();
+    if(!g_buttonFont) g_buttonFont = mainFont ? mainFont : io.Fonts->AddFontDefault();
+    if(!g_codeFont) g_codeFont = mainFont ? mainFont : io.Fonts->AddFontDefault();
 }
 
 void ConfigureStyle()
@@ -524,21 +543,19 @@ void ConfigureStyle()
 
 bool InitializeGui(IDirect3DDevice9* device)
 {
+    if(!device)
+        return false;
     D3DDEVICE_CREATION_PARAMETERS parameters{};
-    if(!device || FAILED(device->GetCreationParameters(&parameters))
-        || !parameters.hFocusWindow)
+    if(FAILED(device->GetCreationParameters(&parameters)) || !parameters.hFocusWindow)
         return false;
-    g_window = parameters.hFocusWindow;
+    HWND targetWindow = parameters.hFocusWindow;
+    if(!IsWindow(targetWindow))
+        return false;
+
+    g_window = targetWindow;
     InputUtil::SetGameWindow(g_window);
-    if(!LoadTexture(device, IDR_DARK_FLAME_BACKGROUND, &g_background)
-        || !LoadTexture(device, IDR_DARK_FLAME_BANNER, &g_banner))
-    {
-        if(g_background) g_background->Release();
-        if(g_banner) g_banner->Release();
-        g_background = nullptr;
-        g_banner = nullptr;
-        return false;
-    }
+    LoadTexture(device, IDR_DARK_FLAME_BACKGROUND, &g_background);
+    LoadTexture(device, IDR_DARK_FLAME_BANNER, &g_banner);
     const auto releaseTextures = []
     {
         if(g_background) g_background->Release();
@@ -547,7 +564,8 @@ bool InitializeGui(IDirect3DDevice9* device)
         g_banner = nullptr;
     };
     IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
+    if(!ImGui::GetCurrentContext())
+        ImGui::CreateContext();
     ConfigureStyle();
     ConfigureFonts();
     ConfigureEditor();
@@ -818,11 +836,63 @@ void TramToggle(const char* label, bool& value, const char* command)
 void RenderProLockOverlay(ImVec2 origin, ImVec2 size, float scale);
 void DrawLicenseTab(ImVec2 position, ImVec2 size, float scale);
 
+namespace
+{
+std::wstring GetSettingsIniPath()
+{
+    wchar_t path[MAX_PATH]{};
+    if(GetModuleFileNameW(nullptr, path, MAX_PATH))
+    {
+        std::wstring s = path;
+        auto sep = s.find_last_of(L"\\/");
+        if(sep != std::wstring::npos)
+            return s.substr(0, sep + 1) + L"settings.ini";
+    }
+    return L"settings.ini";
+}
+
+void LoadTramSettings(int& autoStopMin, int& distMode, bool& autoDist, int& trampDistMode, bool& trampAutoDist)
+{
+    std::wstring ini = GetSettingsIniPath();
+    autoStopMin = GetPrivateProfileIntW(L"TramBot", L"AutoStopMinutes", 180, ini.c_str());
+    distMode = GetPrivateProfileIntW(L"TramBot", L"DistanceMode", 2, ini.c_str());
+    autoDist = GetPrivateProfileIntW(L"TramBot", L"AutoDistance", 1, ini.c_str()) != 0;
+    trampDistMode = GetPrivateProfileIntW(L"PolivTram", L"DistanceMode", 2, ini.c_str());
+    trampAutoDist = GetPrivateProfileIntW(L"PolivTram", L"AutoDistance", 1, ini.c_str()) != 0;
+}
+
+void SaveTramSettings(int autoStopMin, int distMode, bool autoDist)
+{
+    std::wstring ini = GetSettingsIniPath();
+    WritePrivateProfileStringW(L"TramBot", L"AutoStopMinutes", std::to_wstring(autoStopMin).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"TramBot", L"DistanceMode", std::to_wstring(distMode).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"TramBot", L"AutoDistance", autoDist ? L"1" : L"0", ini.c_str());
+}
+
+void SavePolivTramSettings(int distMode, bool autoDist)
+{
+    std::wstring ini = GetSettingsIniPath();
+    WritePrivateProfileStringW(L"PolivTram", L"DistanceMode", std::to_wstring(distMode).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"PolivTram", L"AutoDistance", autoDist ? L"1" : L"0", ini.c_str());
+}
+}
+
 void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 {
     static int s_currentTramTab = 0;
+    static bool s_settingsLoaded = false;
     SyncTramState();
     TramState& state = g_visibleTramState;
+    if(!s_settingsLoaded)
+    {
+        LoadTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.trampDistanceMode, state.trampAutoDistance);
+        g_tramState.autoStopMinutes = state.autoStopMinutes;
+        g_tramState.distanceMode = state.distanceMode;
+        g_tramState.autoDistance = state.autoDistance;
+        g_tramState.trampDistanceMode = state.trampDistanceMode;
+        g_tramState.trampAutoDistance = state.trampAutoDistance;
+        s_settingsLoaded = true;
+    }
     state.subMode = s_currentTramTab;
     ImGui::SetCursorScreenPos(position);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f * scale);
@@ -884,6 +954,54 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         if(XonePlashkaToggle("Остановка на пробел", &state.force, scale))
             QueueTramCommand(std::string("force:") + (state.force ? "1" : "0"));
 
+        if(XonePlashkaToggle("Авто-дистанция (Коллизия)", &state.autoDistance, scale))
+        {
+            {
+                std::scoped_lock lock(g_bridgeMutex);
+                g_tramState.autoDistance = state.autoDistance;
+            }
+            QueueTramCommand(std::string("autodist:") + (state.autoDistance ? "1" : "0"));
+            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance);
+        }
+
+        static const char* s_distOptions[] = { "1 ваг. (~18м)", "2 ваг. (~36м)", "3 ваг. (~54м)" };
+        int distIdx = std::clamp(state.distanceMode - 1, 0, 2);
+        if(XonePlashkaChoice("Дистанция следования", &distIdx, s_distOptions, 3, scale))
+        {
+            state.distanceMode = distIdx + 1;
+            {
+                std::scoped_lock lock(g_bridgeMutex);
+                g_tramState.distanceMode = state.distanceMode;
+            }
+            QueueTramCommand("distmode:" + std::to_string(state.distanceMode));
+            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance);
+        }
+
+        static const int s_autoStopValues[] = { 0, 15, 30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 480, 600, 720 };
+        static const char* s_autoStopLabels[] = {
+            "Без ограничений", "15 мин", "30 мин", "45 мин", "1 час", "1.5 часа",
+            "2 часа", "2.5 часа", "3 часа", "4 часа", "5 часов", "6 часов", "8 часов", "10 часов", "12 часов"
+        };
+        int autoStopIdx = 8;
+        for(int i = 0; i < 15; ++i)
+        {
+            if(s_autoStopValues[i] == state.autoStopMinutes)
+            {
+                autoStopIdx = i;
+                break;
+            }
+        }
+        if(XonePlashkaChoice("Автостоп сессии", &autoStopIdx, s_autoStopLabels, 15, scale))
+        {
+            state.autoStopMinutes = s_autoStopValues[autoStopIdx];
+            {
+                std::scoped_lock lock(g_bridgeMutex);
+                g_tramState.autoStopMinutes = state.autoStopMinutes;
+            }
+            QueueTramCommand("autostop_min:" + std::to_string(state.autoStopMinutes));
+            SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance);
+        }
+
         ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.65f, 1.0f), "БЫСТРЫЙ ВЫБОР МАРШРУТА");
         float routeBtnW = (colW - 8.0f * scale) * 0.5f;
@@ -935,7 +1053,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 
         // Левая колонка — управление ЖТУ
         ImGui::BeginChild("##jtu_col_left", ImVec2(colW, 0.0f), ImGuiChildFlags_None);
-        if(XoneButton(state.bot ? "ОСТАНОВИТЬ ЖТУ (F6)" : "ЗАПУСТИТЬ ЖТУ (/jtu)", scale, true, -1.0f, 40.0f))
+        if(XoneButton(state.bot ? "ОСТАНОВИТЬ ЖТУ" : "ЗАПУСТИТЬ ЖТУ", scale, true, -1.0f, 40.0f))
         {
             if(!state.bot)
             {
@@ -957,7 +1075,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 
         if(XoneButton("Сбросить счётчик циклов", scale, false, -1.0f, 34.0f))
             QueueTramCommand("jtu_reset_cycles");
-        if(XoneButton("Аварийная остановка (F6)", scale, false, -1.0f, 34.0f))
+        if(XoneButton("Аварийная остановка", scale, false, -1.0f, 34.0f))
             QueueTramCommand("jtu_stop");
         ImGui::EndChild();
 
@@ -970,7 +1088,6 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
             state.bot ? IM_COL32(80, 225, 120, 255) : IM_COL32(230, 80, 80, 255));
         std::string cycleStr = std::to_string(state.completedCycles) + " / " + std::to_string(state.targetCycles);
         XonePlashkaValue("Выполнено циклов", cycleStr.c_str(), scale, IM_COL32(190, 140, 255, 255));
-        XonePlashkaValue("Горячие клавиши", "/jtu — запуск, F6 — экстренный стоп", scale);
         ImGui::EndChild();
     }
     else
@@ -980,13 +1097,15 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 
         // Левая колонка — управление трамваем-поливалкой
         ImGui::BeginChild("##tramp_col_left", ImVec2(colW, 0.0f), ImGuiChildFlags_None);
-        if(XoneButton(state.bot ? "ОСТАНОВИТЬ ПОЛИВАЛКУ (/tramp)" : "ЗАПУСТИТЬ ТРАМВАЙ-ПОЛИВАЛКУ (/tramp)", scale, true, -1.0f, 36.0f))
+        if(XoneButton(state.bot ? "ОСТАНОВИТЬ ПОЛИВАЛКУ" : "ЗАПУСТИТЬ ТРАМВАЙ-ПОЛИВАЛКУ", scale, true, -1.0f, 36.0f))
         {
             if(!state.bot)
             {
                 QueueTramCommand("tramp_cycles:" + std::to_string(state.trampTarget));
                 QueueTramCommand("tramp_brake:" + std::to_string(state.trampBrake));
                 QueueTramCommand(std::string("tramp_traffic:") + (state.trampTraffic ? "1" : "0"));
+                QueueTramCommand(std::string("tramp_autodist:") + (state.trampAutoDistance ? "1" : "0"));
+                QueueTramCommand("tramp_distmode:" + std::to_string(state.trampDistanceMode));
                 QueueTramCommand("tramp_start");
             }
             else
@@ -1001,12 +1120,35 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         if(XonePlashkaInt("Тормозная дистанция (м)", &state.trampBrake, 1, 10, scale))
             QueueTramCommand("tramp_brake:" + std::to_string(state.trampBrake));
 
+        if(XonePlashkaToggle("Авто-дистанция (Коллизия)", &state.trampAutoDistance, scale))
+        {
+            {
+                std::scoped_lock lock(g_bridgeMutex);
+                g_tramState.trampAutoDistance = state.trampAutoDistance;
+            }
+            QueueTramCommand(std::string("tramp_autodist:") + (state.trampAutoDistance ? "1" : "0"));
+            SavePolivTramSettings(state.trampDistanceMode, state.trampAutoDistance);
+        }
+
+        static const char* s_trampDistOptions[] = { "1 ваг. (~18м)", "2 ваг. (~36м)", "3 ваг. (~54м)" };
+        int trampDistIdx = std::clamp(state.trampDistanceMode - 1, 0, 2);
+        if(XonePlashkaChoice("Дистанция следования", &trampDistIdx, s_trampDistOptions, 3, scale))
+        {
+            state.trampDistanceMode = trampDistIdx + 1;
+            {
+                std::scoped_lock lock(g_bridgeMutex);
+                g_tramState.trampDistanceMode = state.trampDistanceMode;
+            }
+            QueueTramCommand("tramp_distmode:" + std::to_string(state.trampDistanceMode));
+            SavePolivTramSettings(state.trampDistanceMode, state.trampAutoDistance);
+        }
+
         if(XonePlashkaToggle("Игнорировать светофоры", &state.trampTraffic, scale))
             QueueTramCommand(std::string("tramp_traffic:") + (state.trampTraffic ? "1" : "0"));
 
         if(XoneButton("Сбросить счётчик циклов", scale, false, -1.0f, 30.0f))
             QueueTramCommand("tramp_reset_cycles");
-        if(XoneButton("Пауза / Продолжить (Пробел)", scale, false, -1.0f, 30.0f))
+        if(XoneButton("Пауза / Продолжить", scale, false, -1.0f, 30.0f))
             QueueTramCommand("tramp_pause");
         ImGui::EndChild();
 
@@ -1021,7 +1163,6 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         XonePlashkaValue("Выполнено рейсов", cycleStr.c_str(), scale, IM_COL32(190, 140, 255, 255));
         XonePlashkaValue("Поливалка (установка)", state.trampSprinkler ? "ВКЛЮЧЕНА (поливает)" : "ВЫКЛЮЧЕНА", scale,
             state.trampSprinkler ? IM_COL32(80, 225, 120, 255) : IM_COL32(180, 180, 180, 255));
-        XonePlashkaValue("Управление", "/tramp — старт/стоп, ПРОБЕЛ — пауза", scale);
         ImGui::EndChild();
     }
     if(proSubMode && !isPro)
@@ -1725,6 +1866,8 @@ void RenderMenu()
 
 void RenderFrame(IDirect3DDevice9* device)
 {
+    if(!device)
+        return;
     PulseLuaBridge();
     if(!g_initialized && !InitializeGui(device))
         return;
@@ -1755,23 +1898,47 @@ void RenderFrame(IDirect3DDevice9* device)
 HRESULT __stdcall HookPresent(IDirect3DDevice9* device, const RECT* source,
     const RECT* destination, HWND window, const RGNDATA* dirty)
 {
+    if(!device)
+        return g_present ? g_present(device, source, destination, window, dirty) : D3DERR_INVALIDCALL;
     RenderFrame(device);
     return g_present(device, source, destination, window, dirty);
 }
 
 HRESULT __stdcall HookReset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* parameters)
 {
-    if(g_initialized)
+    if(!device || !g_reset)
+        return D3DERR_INVALIDCALL;
+
+    // 1. Обязательно освобождаем ресурсы перед Reset
+    if(ImGui::GetCurrentContext())
+    {
         ImGui_ImplDX9_InvalidateDeviceObjects();
-    const HRESULT result = g_reset(device, parameters);
-    if(g_initialized && SUCCEEDED(result))
-        ImGui_ImplDX9_CreateDeviceObjects();
-    return result;
+    }
+
+    // 2. Вызываем оригинальный Reset
+    const HRESULT hr = g_reset(device, parameters);
+
+    // 3. Восстанавливаем ресурсы только при успешном результате
+    if(SUCCEEDED(hr))
+    {
+        if(parameters && parameters->hDeviceWindow)
+        {
+            g_window = parameters->hDeviceWindow;
+            InputUtil::SetGameWindow(g_window);
+        }
+        if(g_initialized && ImGui::GetCurrentContext())
+        {
+            ImGui_ImplDX9_CreateDeviceObjects();
+        }
+    }
+    return hr;
 }
 
 HRESULT __stdcall HookPresentEx(IDirect3DDevice9Ex* device, const RECT* source,
     const RECT* destination, HWND window, const RGNDATA* dirty, DWORD flags)
 {
+    if(!device)
+        return g_presentEx ? g_presentEx(device, source, destination, window, dirty, flags) : D3DERR_INVALIDCALL;
     RenderFrame(device);
     return g_presentEx(device, source, destination, window, dirty, flags);
 }
@@ -1779,12 +1946,32 @@ HRESULT __stdcall HookPresentEx(IDirect3DDevice9Ex* device, const RECT* source,
 HRESULT __stdcall HookResetEx(IDirect3DDevice9Ex* device,
     D3DPRESENT_PARAMETERS* parameters, D3DDISPLAYMODEEX* mode)
 {
-    if(g_initialized)
+    if(!device || !g_resetEx)
+        return D3DERR_INVALIDCALL;
+
+    // 1. Обязательно освобождаем ресурсы перед Reset
+    if(ImGui::GetCurrentContext())
+    {
         ImGui_ImplDX9_InvalidateDeviceObjects();
-    const HRESULT result = g_resetEx(device, parameters, mode);
-    if(g_initialized && SUCCEEDED(result))
-        ImGui_ImplDX9_CreateDeviceObjects();
-    return result;
+    }
+
+    // 2. Вызываем оригинальный Reset
+    const HRESULT hr = g_resetEx(device, parameters, mode);
+
+    // 3. Восстанавливаем ресурсы только при успешном результате
+    if(SUCCEEDED(hr))
+    {
+        if(parameters && parameters->hDeviceWindow)
+        {
+            g_window = parameters->hDeviceWindow;
+            InputUtil::SetGameWindow(g_window);
+        }
+        if(g_initialized && ImGui::GetCurrentContext())
+        {
+            ImGui_ImplDX9_CreateDeviceObjects();
+        }
+    }
+    return hr;
 }
 
 bool InstallDeviceHooks(IDirect3DDevice9* device)
@@ -2301,7 +2488,12 @@ void GuiUpdateTramState(std::string_view key, std::string_view value)
     else if(key == "tramp_brake") g_tramState.trampBrake = std::atoi(text.c_str());
     else if(key == "tramp_traffic") g_tramState.trampTraffic = enabled;
     else if(key == "tramp_sprinkler") g_tramState.trampSprinkler = enabled;
+    else if(key == "tramp_autodist") g_tramState.trampAutoDistance = enabled;
+    else if(key == "tramp_distmode") g_tramState.trampDistanceMode = std::atoi(text.c_str());
     else if(key == "submode") g_tramState.subMode = std::atoi(text.c_str());
+    else if(key == "autodist") g_tramState.autoDistance = enabled;
+    else if(key == "distmode") g_tramState.distanceMode = std::atoi(text.c_str());
+    else if(key == "autostop_min") g_tramState.autoStopMinutes = std::atoi(text.c_str());
     else return;
     g_tramDirty = true;
 }
@@ -2354,6 +2546,8 @@ void GuiResetTramState()
     g_tramState.status = "ожидание ресурса";
     g_tramState.money = "0";
     g_tramState.catcher = "не зарегистрирован";
+    g_tramState.trampAutoDistance = true;
+    g_tramState.trampDistanceMode = 2;
     g_tramCommands.clear();
     g_tramDirty = true;
 }

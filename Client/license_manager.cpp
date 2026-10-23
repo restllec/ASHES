@@ -137,6 +137,23 @@ namespace
         std::wstring legacyPath = dir + L"DarkFlame_license.cfg";
         if (GetFileAttributesW(legacyPath.c_str()) != INVALID_FILE_ATTRIBUTES)
             return legacyPath;
+
+        wchar_t exePath[MAX_PATH]{};
+        if (GetModuleFileNameW(nullptr, exePath, MAX_PATH))
+        {
+            std::wstring ePath = exePath;
+            auto p = ePath.find_last_of(L"\\/");
+            if (p != std::wstring::npos)
+            {
+                std::wstring exeDir = ePath.substr(0, p + 1);
+                std::wstring testAshes = exeDir + L"Ashes_license.cfg";
+                if (GetFileAttributesW(testAshes.c_str()) != INVALID_FILE_ATTRIBUTES)
+                    return testAshes;
+                std::wstring testLegacy = exeDir + L"DarkFlame_license.cfg";
+                if (GetFileAttributesW(testLegacy.c_str()) != INVALID_FILE_ATTRIBUTES)
+                    return testLegacy;
+            }
+        }
         return ashesPath;
     }
 

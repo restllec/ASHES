@@ -22,7 +22,7 @@ constexpr const wchar_t* GameTargets[] = {
     L"gta_sa.exe",
     L"Multi Theft Auto.exe"
 };
-constexpr DWORD PollIntervalMs = 1;
+constexpr DWORD PollIntervalMs = 50;
 
 struct ProcessHandle
 {
@@ -40,8 +40,8 @@ std::wstring ErrorText(std::wstring_view prefix, DWORD error)
     return std::wstring(prefix) + std::to_wstring(error);
 }
 
-std::wstring ResolveOrExtractPayload(const std::wstring& ownDirectory, const std::wstring& filename,
-    const std::wstring& legacyFilename, int resourceId, const Launcher::LogSink* log = nullptr)
+std::wstring ResolvePayloadPath(const std::wstring& ownDirectory, const std::wstring& filename,
+    const std::wstring& legacyFilename)
 {
     const std::wstring direct = ownDirectory + L"\\" + filename;
     if(LoaderPath::FileExists(direct))
@@ -49,42 +49,6 @@ std::wstring ResolveOrExtractPayload(const std::wstring& ownDirectory, const std
     const std::wstring legacy = ownDirectory + L"\\" + legacyFilename;
     if(LoaderPath::FileExists(legacy))
         return legacy;
-
-    wchar_t tempDirBuf[MAX_PATH]{};
-    const DWORD len = GetTempPathW(MAX_PATH, tempDirBuf);
-    if(len == 0 || len >= MAX_PATH)
-        return direct;
-
-    const std::wstring targetDir = std::wstring(tempDirBuf) + L"Ashes";
-    CreateDirectoryW(targetDir.c_str(), nullptr);
-    SetFileAttributesW(targetDir.c_str(), FILE_ATTRIBUTE_HIDDEN);
-
-    const std::wstring extractedPath = targetDir + L"\\" + filename;
-
-    HRSRC res = FindResourceW(nullptr, MAKEINTRESOURCEW(resourceId), RT_RCDATA);
-    if(res)
-    {
-        HGLOBAL hGlobal = LoadResource(nullptr, res);
-        if(hGlobal)
-        {
-            const void* pData = LockResource(hGlobal);
-            const DWORD size = SizeofResource(nullptr, res);
-            if(pData && size > 0)
-            {
-                HANDLE hFile = CreateFileW(extractedPath.c_str(), GENERIC_WRITE, 0, nullptr,
-                    CREATE_ALWAYS, FILE_ATTRIBUTE_HIDDEN, nullptr);
-                if(hFile != INVALID_HANDLE_VALUE)
-                {
-                    DWORD written = 0;
-                    WriteFile(hFile, pData, size, &written, nullptr);
-                    CloseHandle(hFile);
-                    if(log)
-                        (*log)(L"[portable] extracted embedded payload: " + filename);
-                    return extractedPath;
-                }
-            }
-        }
-    }
     return direct;
 }
 
@@ -162,8 +126,8 @@ Launcher::ProcessInfo Launcher::CheckProcess()
 int Launcher::Run(std::stop_token stop, const LogSink& log)
 {
     const std::wstring ownDirectory = LoaderPath::OwnDirectory();
-    const std::wstring agent = ResolveOrExtractPayload(ownDirectory, AgentName, LegacyAgentName, IDR_ASHES_AGENT_PAYLOAD, &log);
-    const std::wstring client = ResolveOrExtractPayload(ownDirectory, ClientName, LegacyClientName, IDR_ASHES_CLIENT_PAYLOAD, &log);
+    const std::wstring agent = ResolvePayloadPath(ownDirectory, AgentName, LegacyAgentName);
+    const std::wstring client = ResolvePayloadPath(ownDirectory, ClientName, LegacyClientName);
     if(!LoaderPath::FileExists(agent) || !LoaderPath::FileExists(client))
     {
         log(L"[error] required file is missing");
@@ -174,12 +138,13 @@ int Launcher::Run(std::stop_token stop, const LogSink& log)
         return 2;
     }
 
-    log(L"[info] waiting for Multi Theft Auto.exe (1 ms poll)...");
+    log(L"[info] waiting for target process (safe poll)...");
     ProcessHandle process;
     DWORD processId{};
+    std::wstring exeName;
     while(!stop.stop_requested())
     {
-        processId = FindGameProcess();
+        processId = FindGameProcess(&exeName);
         if(processId)
             process.value = OpenGameProcess(processId);
         if(process.value)
@@ -192,8 +157,8 @@ int Launcher::Run(std::stop_token stop, const LogSink& log)
         return 0;
     }
 
-    log(L"[info] Multi Theft Auto.exe found, PID "
-        + std::to_wstring(processId));
+    log(L"[info] target process found: " + exeName + L" (PID "
+        + std::to_wstring(processId) + L")");
     const DarkFlameConfig config = Config::Load(ownDirectory);
     log(config.antiShadow ? L"[config] Anti-Shadow enabled"
         : L"[config] Anti-Shadow disabled");
@@ -212,22 +177,74 @@ int Launcher::Run(std::stop_token stop, const LogSink& log)
     }
     const auto& payload = ipc.Payload();
     bool exceptionSupport{};
-    bool injected = ManualMap::Map(process.value, agent, &payload,
-        sizeof(payload), &exceptionSupport);
-    DWORD injectionError = GetLastError();
-    if(injected)
+    bool injected = false;
+    DWORD injectionError = 0;
+
+    const bool isGameProcess = (exeName.find(L"proxy_sa") != std::wstring::npos
+        || exeName.find(L"gta_sa") != std::wstring::npos);
+
+    if(isGameProcess)
     {
-        const DWORD wait = WaitForSingleObject(ipc.ReadyEvent(), 5000);
-        if(wait != WAIT_OBJECT_0)
+        log(L"[info] waiting for game window and display stabilization...");
+        HWND gameHwnd = nullptr;
+        for(int attempt = 0; attempt < 150 && !stop.stop_requested(); ++attempt)
         {
-            injected = false;
-            injectionError = wait == WAIT_FAILED ? GetLastError() : WAIT_TIMEOUT;
+            gameHwnd = FindWindowA("Grand theft auto San Andreas", nullptr);
+            if(gameHwnd && IsWindow(gameHwnd))
+                break;
+            Sleep(100);
+        }
+        if(gameHwnd)
+            log(L"[info] game window detected, waiting 4.0s for graphics stack to settle...");
+        else
+            log(L"[warn] game window not detected yet, applying safe delay of 4.0s...");
+
+        for(int i = 0; i < 40 && !stop.stop_requested(); ++i)
+            Sleep(100);
+
+        if(stop.stop_requested())
+            return 0;
+
+        log(L"[info] mapping AshesClient.dll directly into game...");
+        injected = ManualMap::Map(process.value, client, &payload,
+            sizeof(payload), &exceptionSupport);
+        injectionError = GetLastError();
+        if(injected)
+        {
+            const DWORD wait = WaitForSingleObject(ipc.ClientLoadedEvent(), 6000);
+            if(wait != WAIT_OBJECT_0)
+            {
+                log(L"[warn] client confirmation event timed out, continuing");
+            }
         }
     }
+    else
+    {
+        log(L"[info] mapping AshesAgent.dll into launcher...");
+        injected = ManualMap::Map(process.value, agent, &payload,
+            sizeof(payload), &exceptionSupport);
+        injectionError = GetLastError();
+        if(injected)
+        {
+            const DWORD wait = WaitForSingleObject(ipc.ReadyEvent(), 5000);
+            if(wait != WAIT_OBJECT_0)
+            {
+                injected = false;
+                injectionError = wait == WAIT_FAILED ? GetLastError() : WAIT_TIMEOUT;
+            }
+        }
+    }
+
     if(!injected)
     {
-        log(ErrorText(L"[error] agent bootstrap failed: ", injectionError));
+        log(ErrorText(L"[error] injection failed: ", injectionError));
         return 4;
+    }
+
+    if(isGameProcess)
+    {
+        log(L"[ok] ASHES successfully injected into game process");
+        return 0;
     }
 
     log(L"[ok] AshesAgent.dll manually mapped and ready");
@@ -262,8 +279,8 @@ int Launcher::Run(std::stop_token stop, const LogSink& log)
 int Launcher::InjectOnce(const LogSink& log, DWORD specificPid)
 {
     const std::wstring ownDirectory = LoaderPath::OwnDirectory();
-    const std::wstring agent = ResolveOrExtractPayload(ownDirectory, AgentName, LegacyAgentName, IDR_ASHES_AGENT_PAYLOAD, &log);
-    const std::wstring client = ResolveOrExtractPayload(ownDirectory, ClientName, LegacyClientName, IDR_ASHES_CLIENT_PAYLOAD, &log);
+    const std::wstring agent = ResolvePayloadPath(ownDirectory, AgentName, LegacyAgentName);
+    const std::wstring client = ResolvePayloadPath(ownDirectory, ClientName, LegacyClientName);
     if(!LoaderPath::FileExists(agent) || !LoaderPath::FileExists(client))
     {
         log(L"[error] required file is missing (AshesAgent.dll / AshesClient.dll)");
@@ -309,6 +326,21 @@ int Launcher::InjectOnce(const LogSink& log, DWORD specificPid)
 
     if(isGameProcess)
     {
+        log(L"[info] waiting for game window and display stabilization...");
+        HWND gameHwnd = nullptr;
+        for(int attempt = 0; attempt < 150; ++attempt)
+        {
+            gameHwnd = FindWindowA("Grand theft auto San Andreas", nullptr);
+            if(gameHwnd && IsWindow(gameHwnd))
+                break;
+            Sleep(100);
+        }
+        if(gameHwnd)
+            log(L"[info] game window detected, waiting 4.0s for graphics stack to settle...");
+        else
+            log(L"[warn] game window not detected yet, applying safe delay of 4.0s...");
+        Sleep(4000);
+
         log(L"[info] mapping AshesClient.dll directly into game...");
         injected = ManualMap::Map(process.value, client, &payload,
             sizeof(payload), &exceptionSupport);

@@ -3,12 +3,3 @@
 IDR_DARK_FLAME_BACKGROUND RCDATA "assets\\background.png"
 IDR_DARK_FLAME_BANNER RCDATA "assets\\banner.png"
 IDR_DARK_FLAME_ALERT WAVE "assets\\malfunction.wav"
-
-IDR_LUA_TRAMBOT RCDATA "assets\\lua\\TramBot.lua"
-IDR_LUA_PLOWBOT_CLEAN RCDATA "assets\\lua\\PlowBot.clean.lua"
-IDR_LUA_PLOWBOT RCDATA "assets\\lua\\PlowBot.lua"
-IDR_LUA_JBKBOT RCDATA "assets\\lua\\JBKBot.lua"
-IDR_LUA_PILOT RCDATA "assets\\lua\\PilotTelemetry.lua"
-IDR_LUA_JTUBOT RCDATA "assets\\lua\\JTU_BOT_DESIGN.lua"
-IDR_LUA_POLIVBOT RCDATA "assets\\lua\\polivbot.lua"
-IDR_LUA_TOBACCO RCDATA "assets\\lua\\tobacco.lua"

@@ -57,6 +57,7 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="launcher.cpp" />
+    <ClCompile Include="updater.cpp" />
     <ClCompile Include="..\Client\third_party\imgui\imgui.cpp"><WarningLevel>TurnOffAllWarnings</WarningLevel></ClCompile>
     <ClCompile Include="..\Client\third_party\imgui\imgui_draw.cpp"><WarningLevel>TurnOffAllWarnings</WarningLevel></ClCompile>
     <ClCompile Include="..\Client\third_party\imgui\imgui_tables.cpp"><WarningLevel>TurnOffAllWarnings</WarningLevel></ClCompile>
@@ -72,6 +73,7 @@
     <ClInclude Include="loader_resources.h" />
     <ClInclude Include="path_utils.h" />
     <ClInclude Include="registry.h" />
+    <ClInclude Include="updater.h" />
     <ClInclude Include="..\Shared\bootstrap_protocol.h" />
     <ClInclude Include="..\Shared\environment.h" />
     <ClInclude Include="..\Shared\manual_map.h" />

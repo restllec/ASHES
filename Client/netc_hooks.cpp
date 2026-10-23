@@ -559,41 +559,55 @@ namespace
     }
     int __fastcall HookExecuteSecurityViolationKick(void*, void*)
     {
-        Log::Write(L"[ac-stub] ExecuteSecurityViolationKick BLOCKED");
+        static std::atomic_uint count{};
+        if(count.fetch_add(1, std::memory_order_relaxed) < 5)
+            Log::Write(L"[ac-stub] ExecuteSecurityViolationKick BLOCKED");
         return 0;
     }
     int __fastcall HookSendClientKick(void*, void*, char reason)
     {
-        Log::Write(L"[ac-stub] SendClientKick BLOCKED, reason="
-            + std::to_wstring(static_cast<int>(reason)));
+        static std::atomic_uint count{};
+        if(count.fetch_add(1, std::memory_order_relaxed) < 5)
+            Log::Write(L"[ac-stub] SendClientKick BLOCKED, reason="
+                + std::to_wstring(static_cast<int>(reason)));
         return 1;
     }
     int __cdecl HookSendLogger(int, void*, int, int, void*) { return 0; }
     int __fastcall HookSetClientKick(void*, void*, void*, void*, char reason, int)
     {
-        Log::Write(L"[ac-stub] SetClientKick BLOCKED, reason="
-            + std::to_wstring(static_cast<int>(reason)));
+        static std::atomic_uint count{};
+        if(count.fetch_add(1, std::memory_order_relaxed) < 5)
+            Log::Write(L"[ac-stub] SetClientKick BLOCKED, reason="
+                + std::to_wstring(static_cast<int>(reason)));
         return 0;
     }
     void __fastcall HookVfB00Z00Scanner(void*, void*, int)
     {
-        Log::Write(L"[ac-stub] VfB00Z00Scanner BLOCKED");
+        static std::atomic_uint count{};
+        if(count.fetch_add(1, std::memory_order_relaxed) < 5)
+            Log::Write(L"[ac-stub] VfB00Z00Scanner BLOCKED");
     }
     char __fastcall HookNetworkPacketMonitoringSystem(void*, void*, char)
     {
-        Log::Write(L"[ac-stub] NetworkPacketMonitoringSystem BLOCKED");
-        return 0;
+        static std::atomic_uint count{};
+        if(count.fetch_add(1, std::memory_order_relaxed) < 5)
+            Log::Write(L"[ac-stub] NetworkPacketMonitoringSystem forced success (1)");
+        return 1;
     }
     int __fastcall HookSetClientKickNew(void*, void*, char reason)
     {
-        Log::Write(L"[ac-stub] SetClientKickNew BLOCKED, reason="
-            + std::to_wstring(static_cast<int>(reason)));
+        static std::atomic_uint count{};
+        if(count.fetch_add(1, std::memory_order_relaxed) < 5)
+            Log::Write(L"[ac-stub] SetClientKickNew BLOCKED, reason="
+                + std::to_wstring(static_cast<int>(reason)));
         return 0;
     }
     int __fastcall HookScanModuleIntegrity(void*, void*, DWORD*)
     {
-        Log::Write(L"[ac-stub] ScanModuleIntegrity BLOCKED");
-        return 0;
+        static std::atomic_uint count{};
+        if(count.fetch_add(1, std::memory_order_relaxed) < 5)
+            Log::Write(L"[ac-stub] ScanModuleIntegrity forced success (1)");
+        return 1;
     }
 
     void __fastcall HookNetApiDoPulse(void* self, void*)

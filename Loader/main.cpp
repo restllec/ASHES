@@ -2,6 +2,7 @@
 #include "launcher.h"
 #include "loader_license.h"
 #include "path_utils.h"
+#include "updater.h"
 #include "loader_resources.h"
 #include "../Shared/runtime_log.h"
 #include "../Shared/ashes_logo.h"
@@ -298,15 +299,23 @@ void ConfigureFonts()
     g_regularFont = io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\segoeui.ttf", 15.0f, nullptr, glyphs);
     if(!g_regularFont)
+        g_regularFont = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\arial.ttf", 15.0f, nullptr, glyphs);
+    if(!g_regularFont)
         g_regularFont = io.Fonts->AddFontDefault();
     io.FontDefault = g_regularFont;
 
     g_titleFont = io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\segoeuib.ttf", 20.0f, nullptr, glyphs);
+    if(!g_titleFont)
+        g_titleFont = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\arialbd.ttf", 20.0f, nullptr, glyphs);
+
     g_codeFont = io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\consola.ttf", 13.0f, nullptr, glyphs);
-    if(!g_titleFont) g_titleFont = g_regularFont;
-    if(!g_codeFont) g_codeFont = g_regularFont;
+    if(!g_codeFont)
+        g_codeFont = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\cour.ttf", 13.0f, nullptr, glyphs);
+
+    if(!g_titleFont) g_titleFont = g_regularFont ? g_regularFont : io.Fonts->AddFontDefault();
+    if(!g_codeFont) g_codeFont = g_regularFont ? g_regularFont : io.Fonts->AddFontDefault();
 }
 
 void DrawHeader(ImDrawList* draw, ImVec2 origin, float width)
@@ -760,6 +769,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     RuntimeLog::BeginSession();
     g_directory = LoaderPath::OwnDirectory();
+    SetCurrentDirectoryW(g_directory.c_str());
     g_config = Config::Load(g_directory);
 
     // 1. Initialize License state and load existing key
@@ -824,12 +834,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     }
 
     AppendLog(L"[loader] ASHES GUI ready");
+    ShowWindow(g_window, SW_SHOWDEFAULT);
+    UpdateWindow(g_window);
+    RenderFrame();
+
+    AshesUpdater::CheckAndPerformUpdates(g_directory, AppendLog);
+
     if(g_config.autoInject)
     {
         StartAutoLauncher();
     }
-    ShowWindow(g_window, SW_SHOWDEFAULT);
-    UpdateWindow(g_window);
 
     MSG message{};
     while(message.message != WM_QUIT)

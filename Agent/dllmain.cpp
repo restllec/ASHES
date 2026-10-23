@@ -17,6 +17,8 @@ namespace
     std::wstring g_clientPath;
     CreateProcessWFn g_createProcessW{};
     HANDLE g_clientLoadedEvent{};
+    BootstrapProtocol::Data g_bootstrapData{};
+    bool g_hasBootstrapData = false;
 
     bool ApplyBootstrap(const void* reserved)
     {
@@ -28,6 +30,8 @@ namespace
         {
             return false;
         }
+        g_bootstrapData = data;
+        g_hasBootstrapData = true;
 
         return SetEnvironmentVariableW(BootstrapProtocol::LogDirectoryVariable,
                 data.logDirectory)
@@ -98,6 +102,8 @@ namespace
 
         bool exceptionSupport{};
         const bool mapped = MapLibrary(processInformation->hProcess, g_clientPath,
+            g_hasBootstrapData ? &g_bootstrapData : nullptr,
+            g_hasBootstrapData ? sizeof(g_bootstrapData) : 0,
             &exceptionSupport);
         const DWORD mapError = GetLastError();
         ClearBootstrapEnvironment();

@@ -1463,7 +1463,7 @@ int GetLuaResourceIdByName(std::string_view name)
     if(name == "JBKBot.lua") return IDR_LUA_JBKBOT;
     if(name == "PilotTelemetry.lua") return IDR_LUA_PILOT;
     if(name == "JTU_BOT_DESIGN.lua" || name == "jtu_bot.lua" || name == "jtu_bot_from_downloads.lua") return IDR_LUA_JTUBOT;
-    if(name == "polivbot.lua" || name == "polivbot_from_downloads.lua") return IDR_LUA_POLIVBOT;
+    if(name == "PolivTram.lua" || name == "polivbot.lua" || name == "polivbot_from_downloads.lua") return IDR_LUA_POLIVBOT;
     if(name == "tobacco.lua") return IDR_LUA_TOBACCO;
     return 0;
 }
@@ -1528,7 +1528,7 @@ bool ReadLuaScript(const std::wstring& path, std::string_view name,
         }
         else
         {
-            error = std::string(name) + " not found on disk or embedded resources";
+            error = std::string(name) + " not found on disk";
             return false;
         }
     }
@@ -1631,7 +1631,7 @@ void BuildBootstrapPayload(std::wstring_view loaderDirectory)
     g_jtuScriptPath = loaderDirectory.empty() ? std::wstring{}
         : std::wstring(loaderDirectory) + L"\\JTU_BOT_DESIGN.lua";
     g_trampScriptPath = loaderDirectory.empty() ? std::wstring{}
-        : std::wstring(loaderDirectory) + L"\\polivbot_from_downloads.lua";
+        : std::wstring(loaderDirectory) + L"\\PolivTram.lua";
     g_tobaccoScriptPath = loaderDirectory.empty() ? std::wstring{}
         : std::wstring(loaderDirectory) + L"\\tobacco.lua";
     g_jtuPayload.clear();
@@ -1655,7 +1655,7 @@ void BuildBootstrapPayload(std::wstring_view loaderDirectory)
         Log::Write(std::wstring(L"[") + tag + L"] not staged: files not found");
     };
     loadFile({"JTU_BOT_DESIGN.lua", "jtu_bot_from_downloads.lua", "jtu_bot.lua"}, g_jtuPayload, L"jtubot");
-    loadFile({"polivbot_from_downloads.lua", "polivbot.lua"}, g_trampPayload, L"tramppoliv");
+    loadFile({"PolivTram.lua", "polivbot.lua", "polivbot_from_downloads.lua"}, g_trampPayload, L"tramppoliv");
 
     std::string tobacco, tobaccoError;
     if(ReadLuaScript(g_tobaccoScriptPath, "tobacco.lua", tobacco, tobaccoError))
@@ -2669,14 +2669,6 @@ bool InstallLuaBridge(HMODULE client, std::wstring_view loaderDirectory)
         RemoveHooks();
     }
 
-    BuildBootstrapPayload(loaderDirectory);
-    if(!DarkFlameLuaParserSelfTest())
-    {
-        Log::Write(L"[lua-bridge] private embedded runtime self-test failed");
-        return false;
-    }
-    Log::Write(L"[lua-bridge] private embedded runtime self-test passed");
-
     const SignatureScanner scanner(client);
     const std::uintptr_t isNameAllowed = Find(scanner, IsNameAllowedPattern,
         L"CDebugHookManager::IsNameAllowed");
@@ -2806,6 +2798,14 @@ bool InstallLuaBridge(HMODULE client, std::wstring_view loaderDirectory)
         Log::Write(L"[lua-bridge] direct alias registry lookup failed");
         return false;
     }
+
+    BuildBootstrapPayload(loaderDirectory);
+    if(!DarkFlameLuaParserSelfTest())
+    {
+        Log::Write(L"[lua-bridge] private embedded runtime self-test failed");
+        return false;
+    }
+    Log::Write(L"[lua-bridge] private embedded runtime self-test passed");
 
     InitializeNetcClientApi(client);
 
