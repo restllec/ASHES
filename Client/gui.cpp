@@ -933,9 +933,10 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 
     const bool proSubMode = (s_currentTramTab == 1 || s_currentTramTab == 2);
     if(proSubMode && !isPro)
-        ImGui::BeginDisabled(true);
-
-    if(s_currentTramTab == 0)
+    {
+        RenderProLockOverlay(position, size, scale);
+    }
+    else if(s_currentTramTab == 0)
     {
         float availW = ImGui::GetContentRegionAvail().x;
         float colW = (availW - 14.0f * scale) * 0.5f;
@@ -1164,11 +1165,6 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         XonePlashkaValue("Поливалка (установка)", state.trampSprinkler ? "ВКЛЮЧЕНА (поливает)" : "ВЫКЛЮЧЕНА", scale,
             state.trampSprinkler ? IM_COL32(80, 225, 120, 255) : IM_COL32(180, 180, 180, 255));
         ImGui::EndChild();
-    }
-    if(proSubMode && !isPro)
-    {
-        ImGui::EndDisabled();
-        RenderProLockOverlay(position, size, scale);
     }
     ImGui::EndChild();
     ImGui::PopStyleColor(9);
@@ -1512,16 +1508,15 @@ void RenderProLockOverlay(ImVec2 origin, ImVec2 size, float scale)
     ImVec2 minPos = origin;
     ImVec2 maxPos = ImVec2(origin.x + size.x, origin.y + size.y);
 
-    draw->AddRectFilled(minPos, maxPos, IM_COL32(10, 10, 15, 155), 6.0f * scale);
-    draw->AddRect(ImVec2(minPos.x + 1.0f, minPos.y + 1.0f), ImVec2(maxPos.x - 1.0f, maxPos.y - 1.0f),
-        IM_COL32(255, 255, 255, 12), 6.0f * scale, 0, 1.5f);
+    draw->AddRectFilled(minPos, maxPos, IM_COL32(12, 13, 18, 255), 6.0f * scale);
+    draw->AddRect(minPos, maxPos, IM_COL32(255, 255, 255, 12), 6.0f * scale, 0, 1.0f);
 
     float cardW = 340.0f * scale;
     float cardH = 175.0f * scale;
     ImVec2 cardMin(origin.x + (size.x - cardW) * 0.5f, origin.y + (size.y - cardH) * 0.5f);
     ImVec2 cardMax(cardMin.x + cardW, cardMin.y + cardH);
 
-    draw->AddRectFilled(cardMin, cardMax, IM_COL32(20, 22, 32, 245), 10.0f * scale);
+    draw->AddRectFilled(cardMin, cardMax, IM_COL32(20, 22, 32, 255), 10.0f * scale);
     draw->AddRect(cardMin, cardMax, IM_COL32(165, 110, 255, 180), 10.0f * scale, 0, 1.5f);
 
     float badgeW = 48.0f * scale;
@@ -1763,77 +1758,76 @@ void RenderMenu()
     ImGui::SetCursorScreenPos(contentPosition);
     if(g_activeTab == 0)
     {
-        ImGui::SetCursorScreenPos(contentPosition);
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 18, 135));
-        ImGui::BeginChild("##editor_tab", contentSize, ImGuiChildFlags_Borders);
-        if(!isPro) ImGui::BeginDisabled(true);
-        float barH = 36.0f * scale;
-        ImVec2 edSize(contentSize.x - 4.0f, contentSize.y - barH - 12.0f * scale);
-        g_editor->Render("##lua_editor", edSize, false);
-        ImGui::SetCursorScreenPos(ImVec2(contentPosition.x + 4.0f * scale, contentPosition.y + edSize.y + 6.0f * scale));
-        ImGui::TextUnformatted("Target resource:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(320.0f * scale);
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, c.plashkaBg);
-        ImGui::InputText("##target_resource", g_targetResource, sizeof(g_targetResource));
-        ImGui::PopStyleColor();
-        ImGui::SameLine();
-        if(XoneButton("Inject Code", scale, true, 130.0f * scale, 28.0f))
-            QueueEditorCode();
         if(!isPro)
         {
-            ImGui::EndDisabled();
             RenderProLockOverlay(contentPosition, contentSize, scale);
         }
-        ImGui::EndChild();
-        ImGui::PopStyleColor();
+        else
+        {
+            ImGui::SetCursorScreenPos(contentPosition);
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 18, 135));
+            ImGui::BeginChild("##editor_tab", contentSize, ImGuiChildFlags_Borders);
+            float barH = 36.0f * scale;
+            ImVec2 edSize(contentSize.x - 4.0f, contentSize.y - barH - 12.0f * scale);
+            g_editor->Render("##lua_editor", edSize, false);
+            ImGui::SetCursorScreenPos(ImVec2(contentPosition.x + 4.0f * scale, contentPosition.y + edSize.y + 6.0f * scale));
+            ImGui::TextUnformatted("Target resource:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(320.0f * scale);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, c.plashkaBg);
+            ImGui::InputText("##target_resource", g_targetResource, sizeof(g_targetResource));
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            if(XoneButton("Inject Code", scale, true, 130.0f * scale, 28.0f))
+                QueueEditorCode();
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+        }
     }
     else if(g_activeTab == 1)
     {
-        ImGui::SetCursorScreenPos(contentPosition);
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 18, 135));
-        ImGui::BeginChild("##events_tab", contentSize, ImGuiChildFlags_Borders);
-        if(!isPro) ImGui::BeginDisabled(true);
-        SyncEvents();
-        bool antiAfk = IsAntiAfkEnabled();
-        if(XoneToggle("##tgl_anti_afk", &antiAfk, scale))
-        {
-            SetAntiAfkEnabled(antiAfk);
-        }
-        ImGui::SameLine();
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 1.0f * scale);
-        ImGui::TextColored(antiAfk ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
-            antiAfk ? "Anti-AFK: Активен (блокировка province_afktimer)" : "Anti-AFK: Выключен");
-        ImGui::SameLine();
-        float availW = ImGui::GetContentRegionAvail().x;
-        float btnW = 110.0f * scale;
-        if(availW > btnW)
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availW - btnW));
-        if(XoneButton("Очистить", scale, false, btnW, 22.0f * scale))
-        {
-            GuiClearEvents();
-        }
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, c.plashkaBg);
-        ImGui::InputTextMultiline("##event_monitor", g_events.data(), g_events.size(),
-            ImVec2(-1.0f, -1.0f), ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AllowTabInput);
-        ImGui::PopStyleColor();
         if(!isPro)
         {
-            ImGui::EndDisabled();
             RenderProLockOverlay(contentPosition, contentSize, scale);
         }
-        ImGui::EndChild();
-        ImGui::PopStyleColor();
+        else
+        {
+            ImGui::SetCursorScreenPos(contentPosition);
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 18, 135));
+            ImGui::BeginChild("##events_tab", contentSize, ImGuiChildFlags_Borders);
+            SyncEvents();
+            bool antiAfk = IsAntiAfkEnabled();
+            if(XoneToggle("##tgl_anti_afk", &antiAfk, scale))
+            {
+                SetAntiAfkEnabled(antiAfk);
+            }
+            ImGui::SameLine();
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 1.0f * scale);
+            ImGui::TextColored(antiAfk ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                antiAfk ? "Anti-AFK: Активен (блокировка province_afktimer)" : "Anti-AFK: Выключен");
+            ImGui::SameLine();
+            float availW = ImGui::GetContentRegionAvail().x;
+            float btnW = 110.0f * scale;
+            if(availW > btnW)
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availW - btnW));
+            if(XoneButton("Очистить", scale, false, btnW, 22.0f * scale))
+            {
+                GuiClearEvents();
+            }
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, c.plashkaBg);
+            ImGui::InputTextMultiline("##event_monitor", g_events.data(), g_events.size(),
+                ImVec2(-1.0f, -1.0f), ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AllowTabInput);
+            ImGui::PopStyleColor();
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+        }
     }
     else if(g_activeTab == 2)
     {
-        if(!isPro) ImGui::BeginDisabled(true);
-        DrawThreadList(contentPosition, contentSize, scale);
         if(!isPro)
-        {
-            ImGui::EndDisabled();
             RenderProLockOverlay(contentPosition, contentSize, scale);
-        }
+        else
+            DrawThreadList(contentPosition, contentSize, scale);
     }
     else if(g_activeTab == 3)
         DrawTramBot(contentPosition, contentSize, scale);
@@ -1845,13 +1839,10 @@ void RenderMenu()
         DrawPlowBot(contentPosition, contentSize, scale);
     else if(g_activeTab == 7)
     {
-        if(!isPro) ImGui::BeginDisabled(true);
-        DrawAdminTab(contentPosition, contentSize, scale);
         if(!isPro)
-        {
-            ImGui::EndDisabled();
             RenderProLockOverlay(contentPosition, contentSize, scale);
-        }
+        else
+            DrawAdminTab(contentPosition, contentSize, scale);
     }
     else if(g_activeTab == 8)
     {
