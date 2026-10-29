@@ -38,3 +38,6 @@ void GuiResetTramState();
 void GuiResetJbkState();
 void GuiResetTobaccoState();
 bool GuiTakeTobaccoCommand(std::string& command);
+void GuiUpdateLesorubState(std::string_view key, std::string_view value);
+void GuiResetLesorubState();
+bool GuiTakeLesorubCommand(std::string& command);

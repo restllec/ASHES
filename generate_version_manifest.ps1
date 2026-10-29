@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "1.0.3",
+    [string]$Version = "1.7.0",
     [string]$Repo = "restllec/ASHES",
     [string]$OutputDir = "$PSScriptRoot\bin\Release\x86"
 )
@@ -9,6 +9,7 @@ $filesToInclude = @(
     "AshesClient.dll",
     "JBKBot.lua",
     "jtu_bot.lua",
+    "lesorub.lua",
     "PilotTelemetry.lua",
     "PlowBot.lua",
     "PlowMarks.txt",
@@ -17,16 +18,24 @@ $filesToInclude = @(
     "TramBot.lua"
 )
 
+$optionalModules = @(
+    "WinterCat.exe",
+    "plugin.dll",
+    "extension.dll"
+)
+
 $fileEntries = @()
-foreach ($fn in $filesToInclude) {
+foreach ($fn in ($filesToInclude + $optionalModules)) {
     $fp = Join-Path $OutputDir $fn
     if (Test-Path $fp) {
         $hash = (Get-FileHash -Path $fp -Algorithm SHA256).Hash.ToLower()
         $url = "https://github.com/$Repo/releases/latest/download/$fn"
+        $isOptional = $optionalModules -contains $fn
         $fileEntries += [PSCustomObject]@{
             name = $fn
             url = $url
             sha256 = $hash
+            optional = $isOptional
         }
     }
 }

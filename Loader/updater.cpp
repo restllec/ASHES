@@ -253,6 +253,9 @@ UpdateManifest ParseManifest(const std::string& json)
                 file.name = Utf8ToWide(FindJsonStringValue(fileBlock, "name"));
                 file.url = Utf8ToWide(FindJsonStringValue(fileBlock, "url"));
                 file.sha256 = ToLower(FindJsonStringValue(fileBlock, "sha256"));
+                file.optional = (FindJsonStringValue(fileBlock, "optional") == "true" ||
+                                 fileBlock.find("\"optional\": true") != std::string_view::npos ||
+                                 fileBlock.find("\"optional\":true") != std::string_view::npos);
 
                 if (!file.name.empty() && !file.url.empty())
                 {
@@ -323,6 +326,13 @@ void ExecuteSelfUpdate(const std::wstring& directory, const std::wstring& update
 
 bool CheckAndPerformUpdates(const std::wstring& directory, const LogCallback& log)
 {
+    const std::wstring devFlag = directory + L"\\dev.flag";
+    if (GetFileAttributesW(devFlag.c_str()) != INVALID_FILE_ATTRIBUTES)
+    {
+        log(L"[updater] dev.flag обнаружен: режим разработки, автообновление пропущено");
+        return false;
+    }
+
     log(L"[updater] Проверка обновлений (GitHub Releases)...");
 
     std::vector<BYTE> manifestData;
@@ -362,6 +372,12 @@ bool CheckAndPerformUpdates(const std::wstring& directory, const LogCallback& lo
     for (const auto& file : manifest.files)
     {
         std::wstring targetPath = directory + L"\\" + file.name;
+        const bool fileExists = (GetFileAttributesW(targetPath.c_str()) != INVALID_FILE_ATTRIBUTES);
+        if (file.optional && !fileExists)
+        {
+            continue; // Опциональный модуль не установлен - пропускаем
+        }
+
         std::string currentHash = CalculateSha256(targetPath);
 
         if (currentHash != file.sha256)

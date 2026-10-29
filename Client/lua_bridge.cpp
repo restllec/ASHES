@@ -87,6 +87,9 @@ std::atomic<DWORD> g_plowRetryTick{};
 std::atomic_uint32_t g_tobaccoState{};
 std::atomic_uintptr_t g_tobaccoSession{};
 std::atomic<DWORD> g_tobaccoRetryTick{};
+std::atomic_uint32_t g_lesorubState{};
+std::atomic_uintptr_t g_lesorubSession{};
+std::atomic<DWORD> g_lesorubRetryTick{};
 std::atomic_uint32_t g_jtuState{};
 std::atomic_uintptr_t g_jtuSession{};
 std::atomic<DWORD> g_jtuRetryTick{};
@@ -105,6 +108,7 @@ std::wstring g_plowCleanScriptPath;
 std::wstring g_jtuScriptPath;
 std::wstring g_trampScriptPath;
 std::wstring g_tobaccoScriptPath;
+std::wstring g_lesorubScriptPath;
 std::string g_bootstrapPayload;
 std::string g_bootstrapError;
 std::string g_tramPayload;
@@ -114,6 +118,7 @@ std::string g_plowPayload;
 std::string g_jtuPayload;
 std::string g_trampPayload;
 std::string g_tobaccoPayload;
+std::string g_lesorubPayload;
 std::atomic_uint32_t g_trampState{};
 std::atomic_uintptr_t g_trampSession{};
 std::atomic<DWORD> g_trampRetryTick{};
@@ -463,6 +468,30 @@ int __cdecl DirectTobaccoUpdate(void* lua)
     return 1;
 }
 
+int __cdecl DirectLesorubTakeCommand(void* lua)
+{
+    std::string command;
+    if(!GuiTakeLesorubCommand(command))
+        return 0;
+    DarkFlameLuaPushString(lua, command.c_str());
+    Log::Write(L"[lesorub] Lua consumed GUI command: " + WideAscii(command));
+    return 1;
+}
+
+int __cdecl DirectLesorubUpdate(void* lua)
+{
+    if(DarkFlameLuaGetTop(lua) < 2)
+    {
+        DarkFlameLuaPushBoolean(lua, 0);
+        return 1;
+    }
+    const std::string key = LuaText(lua, 1, 64, false);
+    const std::string value = LuaText(lua, 2, 512, false);
+    GuiUpdateLesorubState(key, value);
+    DarkFlameLuaPushBoolean(lua, 1);
+    return 1;
+}
+
 int __cdecl DirectSetAntiAfk(void* lua)
 {
     if(DarkFlameLuaGetTop(lua) >= 1)
@@ -507,6 +536,8 @@ void RegisterDirectAliases(void* lua)
     RegisterPrivate(lua, "dfJbkUpdate", &DirectJbkUpdate);
     RegisterPrivate(lua, "dfTobaccoTakeCommand", &DirectTobaccoTakeCommand);
     RegisterPrivate(lua, "dfTobaccoUpdate", &DirectTobaccoUpdate);
+    RegisterPrivate(lua, "dfLesorubTakeCommand", &DirectLesorubTakeCommand);
+    RegisterPrivate(lua, "dfLesorubUpdate", &DirectLesorubUpdate);
     RegisterPrivate(lua, "dfMenuOpen", &MenuOpen);
 }
 
@@ -1341,6 +1372,12 @@ void ResetBotSessionIfMatching(std::uintptr_t id)
         g_tobaccoSession.store(0, std::memory_order_release);
         GuiResetTobaccoState();
     }
+    if(g_lesorubSession.load(std::memory_order_acquire) == id)
+    {
+        g_lesorubState.store(0, std::memory_order_release);
+        g_lesorubSession.store(0, std::memory_order_release);
+        GuiResetLesorubState();
+    }
     if(g_jtuSession.load(std::memory_order_acquire) == id)
     {
         g_jtuState.store(0, std::memory_order_release);
@@ -1465,6 +1502,7 @@ int GetLuaResourceIdByName(std::string_view name)
     if(name == "JTU_BOT_DESIGN.lua" || name == "jtu_bot.lua" || name == "jtu_bot_from_downloads.lua") return IDR_LUA_JTUBOT;
     if(name == "PolivTram.lua" || name == "polivbot.lua" || name == "polivbot_from_downloads.lua") return IDR_LUA_POLIVBOT;
     if(name == "tobacco.lua") return IDR_LUA_TOBACCO;
+    if(name == "lesorub.lua") return IDR_LUA_LESORUB;
     return 0;
 }
 
@@ -1634,9 +1672,12 @@ void BuildBootstrapPayload(std::wstring_view loaderDirectory)
         : std::wstring(loaderDirectory) + L"\\PolivTram.lua";
     g_tobaccoScriptPath = loaderDirectory.empty() ? std::wstring{}
         : std::wstring(loaderDirectory) + L"\\tobacco.lua";
+    g_lesorubScriptPath = loaderDirectory.empty() ? std::wstring{}
+        : std::wstring(loaderDirectory) + L"\\lesorub.lua";
     g_jtuPayload.clear();
     g_trampPayload.clear();
     g_tobaccoPayload.clear();
+    g_lesorubPayload.clear();
 
     auto loadFile = [&](std::initializer_list<const char*> names, std::string& payload, const wchar_t* tag) {
         for(const char* name : names)
@@ -1669,6 +1710,20 @@ void BuildBootstrapPayload(std::wstring_view loaderDirectory)
         GuiUpdateTobaccoState("loaded", "0");
         GuiUpdateTobaccoState("status", tobaccoError);
         Log::Write(L"[tobacco] not staged: " + WideAscii(tobaccoError));
+    }
+
+    std::string lesorub, lesorubError;
+    if(ReadLuaScript(g_lesorubScriptPath, "lesorub.lua", lesorub, lesorubError))
+    {
+        g_lesorubPayload = std::move(lesorub);
+        GuiUpdateLesorubState("loaded", "1");
+        Log::Write(L"[lesorub] staged: " + std::to_wstring(g_lesorubPayload.size()) + L" bytes");
+    }
+    else
+    {
+        GuiUpdateLesorubState("loaded", "0");
+        GuiUpdateLesorubState("status", lesorubError);
+        Log::Write(L"[lesorub] not staged: " + WideAscii(lesorubError));
     }
 }
 
@@ -1996,6 +2051,45 @@ void TryStartTobaccoBot()
     GuiUpdateTobaccoState("status", error);
 }
 
+void TryStartLesorubBot()
+{
+    if(g_bootstrapState.load(std::memory_order_acquire) != 2
+        || g_lesorubPayload.empty()
+        || g_lesorubState.load(std::memory_order_acquire) == 2)
+    {
+        return;
+    }
+    const DWORD now = GetTickCount();
+    DWORD checked = g_lesorubRetryTick.load(std::memory_order_relaxed);
+    if(now - checked < 500 || !g_lesorubRetryTick.compare_exchange_strong(
+        checked, now, std::memory_order_relaxed))
+    {
+        return;
+    }
+    std::uint32_t expected{};
+    if(!g_lesorubState.compare_exchange_strong(expected, 1,
+        std::memory_order_acq_rel, std::memory_order_acquire))
+    {
+        return;
+    }
+
+    std::uintptr_t id{};
+    std::string error;
+    for(const char* res : {"province_sawmill", "sawmill", "province_tram", "province_ac", "freeroam", "sp_system", "gui"})
+    {
+        if(InjectIntoResource(res, g_lesorubPayload, id, error))
+        {
+            g_lesorubSession.store(id, std::memory_order_release);
+            g_lesorubState.store(2, std::memory_order_release);
+            GuiUpdateLesorubState("loaded", "1");
+            Log::Write(L"[lesorub] runtime injection started in " + WideAscii(res));
+            return;
+        }
+    }
+    g_lesorubState.store(0, std::memory_order_release);
+    GuiUpdateLesorubState("status", error);
+}
+
 void TryStartJtuBot()
 {
     if(g_bootstrapState.load(std::memory_order_acquire) != 2 || g_jtuPayload.empty())
@@ -2131,6 +2225,9 @@ void ResetForReconnect(bool immediate = false)
     g_tobaccoState.store(0, std::memory_order_release);
     g_tobaccoSession.store(0, std::memory_order_release);
     g_tobaccoRetryTick.store(0, std::memory_order_release);
+    g_lesorubState.store(0, std::memory_order_release);
+    g_lesorubSession.store(0, std::memory_order_release);
+    g_lesorubRetryTick.store(0, std::memory_order_release);
     g_jtuState.store(0, std::memory_order_release);
     g_jtuSession.store(0, std::memory_order_release);
     g_jtuRetryTick.store(0, std::memory_order_release);
@@ -2612,6 +2709,7 @@ void PulseLuaBridge()
     TryStartPilotBot();
     TryStartPlowBot();
     TryStartTobaccoBot();
+    TryStartLesorubBot();
     TryStartJtuBot();
     TryStartTramPolivBot();
 }

@@ -445,6 +445,7 @@ function startJTU()
     brakeV0, brakeD0 = nil, nil
 
     chatInfo("Бот запущен")
+    outputChatBox("[ЖТУ] Скрипт запущен | Автор: restleSS", 100, 200, 255, false)
     startJob()
 end
 
@@ -807,5 +808,11 @@ addEventHandler("onClientResourceStop", resourceRoot, function()
     releaseMovement()
     if isElement(train) then
         setSpeed(0)
+    end
+end)
+
+bindKey("space", "down", function()
+    if running then
+        stopJTU()
     end
 end)

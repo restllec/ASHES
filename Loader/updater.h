@@ -6,7 +6,7 @@
 
 namespace AshesUpdater
 {
-inline constexpr const char* CURRENT_LOADER_VERSION = "1.0.5";
+inline constexpr const char* CURRENT_LOADER_VERSION = "1.7.0";
 inline constexpr const wchar_t* DEFAULT_MANIFEST_URL =
     L"https://github.com/restllec/ASHES/releases/latest/download/version.json";
 
@@ -17,6 +17,7 @@ struct ManifestFile
     std::wstring name;
     std::wstring url;
     std::string sha256;
+    bool optional = false;
 };
 
 struct UpdateManifest
