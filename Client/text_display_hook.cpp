@@ -6,6 +6,7 @@
 #include "plow_bot.h"
 #include "lua_bridge.h"
 #include "signature_scanner.h"
+#include "admin_database.h"
 
 #include <MinHook.h>
 
@@ -173,6 +174,24 @@ void __fastcall HookTextDisplaySetCaption(void* self, void*, const char* caption
         GuiQueueTramAdminCaption(message);
         GuiQueueJbkAdminCaption(message);
         TriggerAdminAutoReply(message);
+
+        // Extract admin name if formatted as "Nick_Name:" or similar
+        std::string adminNick = "Администратор";
+        std::string adminRole = "Администратор";
+        int adminLevel = 3;
+
+        AdminRecord rec;
+        for (const auto& a : AdminDatabase::Instance().GetCurrentServerAdmins())
+        {
+            if (message.find(a.nick) != std::string::npos)
+            {
+                adminNick = a.nick;
+                adminRole = a.role;
+                adminLevel = a.level;
+                break;
+            }
+        }
+        AdminDatabase::Instance().TriggerToast(adminNick, adminRole, adminLevel);
     }
     Log::Write(presence ? L"[alert] admin presence caption detected"
         : L"[alert] admin caption detected");

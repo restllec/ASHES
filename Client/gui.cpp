@@ -11,6 +11,7 @@
 #include "ui_widgets.h"
 #include "../Shared/ashes_logo.h"
 #include "../Shared/ashes_editions.h"
+#include "admin_database.h"
 
 #include <MinHook.h>
 #define DIRECTINPUT_VERSION 0x0800
@@ -610,6 +611,7 @@ bool InitializeGui(IDirect3DDevice9* device)
         return false;
     }
     g_initialized = true;
+    AdminDatabase::Instance().Initialize();
     Log::Write(L"[gui] ImGui DX9 menu ready; toggle with Shift+R");
     return true;
 }
@@ -1665,21 +1667,218 @@ static int g_adminDelaySec = 3;
 static char g_adminTriggers[256] = "вы тут, тут?, ответ в /b, проверка, вы здесь";
 static char g_adminAnswers[256] = "тут\nда, тут\nя тут\nздесь я\nда, работаю";
 
+void RenderAdminCheckerHud(float scale)
+{
+    auto& db = AdminDatabase::Instance();
+    if(!db.hudEnabled && !db.hudConfigMode)
+        return;
+
+    const bool menuOpen = g_visible.load();
+    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings;
+    if(!menuOpen && !db.hudConfigMode)
+    {
+        flags |= ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    }
+
+    float alpha = db.hudAlpha;
+    if(alpha < 0.2f) alpha = 0.2f;
+    if(alpha > 1.0f) alpha = 1.0f;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(16, 16, 22, static_cast<int>(240 * alpha)));
+    ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(50, 50, 65, static_cast<int>(220 * alpha)));
+
+    if(ImGui::Begin("AdminCheckerHUD", nullptr, flags))
+    {
+        ImGui::SetWindowFontScale(db.hudScale);
+        int s = db.GetServer();
+        auto admins = db.GetCurrentServerAdmins();
+
+        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f), "ADMIN CHECKER [Сервер %d]", s);
+        if(menuOpen || db.hudConfigMode)
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(перемещение)");
+        }
+        ImGui::Separator();
+
+        int onlineCount = 0;
+        for(const auto& a : admins)
+        {
+            if(a.isOnline || a.isSpectating) onlineCount++;
+        }
+
+        if(onlineCount == 0)
+        {
+            ImGui::TextColored(ImVec4(0.55f, 0.55f, 0.6f, 1.0f), "Онлайн: 0 / В базе: %zu", admins.size());
+            size_t maxShow = (std::min)(admins.size(), static_cast<size_t>(6));
+            for(size_t i = 0; i < maxShow; ++i)
+            {
+                const auto& a = admins[i];
+                ImU32 dotColor = a.isOnline ? IM_COL32(80, 225, 120, 255) :
+                                 a.isSpectating ? IM_COL32(245, 185, 55, 255) :
+                                 IM_COL32(100, 100, 115, 180);
+                ImVec2 p = ImGui::GetCursorScreenPos();
+                ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(p.x + 5.0f * scale, p.y + 8.0f * scale), 3.5f * scale, dotColor);
+                ImGui::Dummy(ImVec2(12.0f * scale, 1.0f));
+                ImGui::SameLine();
+                ImGui::Text("%s [%s | %d ур.]", a.nick.c_str(), a.role.c_str(), a.level);
+            }
+        }
+        else
+        {
+            ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "Онлайн: %d", onlineCount);
+            for(const auto& a : admins)
+            {
+                if(!a.isOnline && !a.isSpectating) continue;
+                ImU32 dotColor = a.isSpectating ? IM_COL32(245, 185, 55, 255) : IM_COL32(80, 225, 120, 255);
+                ImVec2 p = ImGui::GetCursorScreenPos();
+                ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(p.x + 5.0f * scale, p.y + 8.0f * scale), 3.5f * scale, dotColor);
+                ImGui::Dummy(ImVec2(12.0f * scale, 1.0f));
+                ImGui::SameLine();
+                ImGui::Text("%s [%s | %d ур.]", a.nick.c_str(), a.role.c_str(), a.level);
+            }
+        }
+        ImGui::SetWindowFontScale(1.0f);
+    }
+    ImGui::End();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(2);
+}
+
+void RenderAdminToast(float scale)
+{
+    auto& db = AdminDatabase::Instance();
+    if(!db.toastEnabled || !db.IsToastActive())
+        return;
+
+    AdminToastData toast = db.GetToastData();
+    auto elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - toast.startTime).count();
+    if(elapsed >= toast.durationSec)
+        return;
+
+    float alpha = 1.0f;
+    if(elapsed < 0.3f)
+        alpha = elapsed / 0.3f;
+    else if(elapsed > (toast.durationSec - 0.8f))
+        alpha = (toast.durationSec - elapsed) / 0.8f;
+    alpha = std::clamp(alpha, 0.0f, 1.0f);
+
+    ImGuiIO& io = ImGui::GetIO();
+    float toastW = 390.0f * scale;
+    float toastH = 64.0f * scale;
+    ImVec2 toastPos((io.DisplaySize.x - toastW) * 0.5f, 38.0f * scale);
+
+    ImGui::SetNextWindowPos(toastPos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(toastW, toastH), ImGuiCond_Always);
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration
+        | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings
+        | ImGuiWindowFlags_NoBackground;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
+    if(ImGui::Begin("AdminToastAlert", nullptr, flags))
+    {
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        ImVec2 p0 = toastPos;
+        ImVec2 p1(toastPos.x + toastW, toastPos.y + toastH);
+
+        draw->AddRectFilled(p0, p1, IM_COL32(20, 20, 26, static_cast<int>(245 * alpha)), 8.0f * scale);
+        draw->AddRect(p0, p1, IM_COL32(60, 60, 75, static_cast<int>(200 * alpha)), 8.0f * scale, 0, 1.0f);
+
+        draw->AddRectFilled(ImVec2(p0.x + 8.0f * scale, p1.y - 3.5f * scale),
+            ImVec2(p1.x - 8.0f * scale, p1.y - 1.0f * scale),
+            IM_COL32(245, 175, 40, static_cast<int>(255 * alpha)), 2.0f * scale);
+
+        draw->AddCircleFilled(ImVec2(p0.x + 22.0f * scale, p0.y + 26.0f * scale), 6.0f * scale,
+            IM_COL32(245, 175, 40, static_cast<int>(240 * alpha)));
+        draw->AddCircleFilled(ImVec2(p0.x + 22.0f * scale, p0.y + 26.0f * scale), 2.5f * scale,
+            IM_COL32(20, 20, 26, static_cast<int>(255 * alpha)));
+
+        ImGui::SetCursorScreenPos(ImVec2(p0.x + 36.0f * scale, p0.y + 12.0f * scale));
+        ImGui::TextColored(ImVec4(0.96f, 0.72f, 0.22f, alpha), "За вами следит администратор");
+
+        ImGui::SetCursorScreenPos(ImVec2(p0.x + 36.0f * scale, p0.y + 32.0f * scale));
+        ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, alpha), "%s (%s | %d ур.)",
+            toast.nick.c_str(), toast.role.c_str(), toast.level);
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
 void DrawAdminTab(ImVec2 position, ImVec2 size, float scale)
 {
+    auto& db = AdminDatabase::Instance();
     ImGui::SetCursorScreenPos(position);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f * scale);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 18, 135));
     ImGui::BeginChild("##admin_tab", size, ImGuiChildFlags_Borders);
 
-    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, 1.0f), "ЗАЩИТА ОТ ПРОВЕРОК АДМИНИСТРАЦИИ (АВТООТВЕТЧИК)");
+    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, 1.0f), "АДМИНИСТРАЦИЯ, ОВЕРЛЕЙ И СИСТЕМА ЗАЩИТЫ");
     ImGui::Separator();
 
     float availW = ImGui::GetContentRegionAvail().x;
     float colW = (availW - 14.0f * scale) * 0.5f;
 
-    // Левая колонка — тогглы и параметры
+    // Левая колонка — База, форум и оверлей (HUD / Toast)
     ImGui::BeginChild("##admin_col_left", ImVec2(colW, 0.0f), ImGuiChildFlags_None);
+    ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.95f, 1.0f), "БАЗА ДАННЫХ И ОВЕРЛЕЙ (HUD)");
+
+    int curServer = db.GetServer() - 1;
+    const char* serverList[] = {
+        "Сервер 1 (185.71.66.80)",
+        "Сервер 2 (185.71.66.70)",
+        "Сервер 3 (185.71.66.79)",
+        "Сервер 4 (185.71.66.64)",
+        "Сервер 5 (185.71.66.66)",
+        "Сервер 6 (185.71.66.81)",
+        "Сервер 7 (Discord / Local)"
+    };
+    ImGui::SetNextItemWidth(-1);
+    if(ImGui::Combo("##admin_server", &curServer, serverList, 7))
+    {
+        db.SetServer(curServer + 1);
+    }
+
+    if(XoneButton(db.IsUpdating() ? "Синхронизация..." : "[ ⟳ Обновить базу с форума ]", scale, false, -1.0f, 28.0f))
+    {
+        db.StartUpdateAsync();
+    }
+
+    ImGui::TextColored(ImVec4(0.4f, 0.85f, 0.5f, 1.0f), "%s", db.GetStatusString().c_str());
+    ImGui::Spacing();
+
+    XonePlashkaToggle("Включить HUD админчекера", &db.hudEnabled, scale);
+    XonePlashkaToggle("Режим настройки положения HUD", &db.hudConfigMode, scale);
+    XonePlashkaToggle("Всплывающие уведомления (Toast)", &db.toastEnabled, scale);
+
+    int alphaPct = static_cast<int>(db.hudAlpha * 100.0f);
+    if(XonePlashkaInt("Непрозрачность HUD (%)", &alphaPct, 20, 100, scale))
+    {
+        db.hudAlpha = static_cast<float>(alphaPct) / 100.0f;
+        db.SaveSettings();
+    }
+
+    int scalePct = static_cast<int>(db.hudScale * 100.0f);
+    if(XonePlashkaInt("Масштаб HUD (%)", &scalePct, 70, 150, scale))
+    {
+        db.hudScale = static_cast<float>(scalePct) / 100.0f;
+        db.SaveSettings();
+    }
+
+    if(XoneButton("Тест уведомления о слежке", scale, false, -1.0f, 26.0f))
+    {
+        db.TriggerToast("Emily_Quincy", "Главный администратор", 7);
+    }
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    // Правая колонка — Автоответчик и анти-слежка
+    ImGui::BeginChild("##admin_col_right", ImVec2(colW, 0.0f), ImGuiChildFlags_None);
+    ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.95f, 1.0f), "АВТООТВЕТЧИК И ПРОВЕРКИ");
+
     bool autoReply = GuiAdminAutoReplyEnabled();
     if(XonePlashkaToggle("Включить автоответчик", &autoReply, scale))
     {
@@ -1699,25 +1898,17 @@ void DrawAdminTab(ImVec2 position, ImVec2 size, float scale)
     if(XoneButton("Случайно", scale, g_adminChatType == 2, chatBtnW, 26.0f)) g_adminChatType = 2;
 
     ImGui::Spacing();
-    XonePlashkaValue("Статус системы", autoReply ? "АКТИВЕН (сканирует чат)" : "ОТКЛЮЧЕН", scale,
-        autoReply ? IM_COL32(80, 225, 120, 255) : IM_COL32(230, 80, 80, 255));
-    ImGui::EndChild();
-
-    ImGui::SameLine();
-
-    // Правая колонка — слова и шаблоны
-    ImGui::BeginChild("##admin_col_right", ImVec2(colW, 0.0f), ImGuiChildFlags_None);
     ImGui::TextUnformatted("Триггер-слова в чате (через запятую):");
     ImGui::SetNextItemWidth(-1);
     ImGui::InputText("##admin_trg", g_adminTriggers, sizeof(g_adminTriggers));
     ImGui::Spacing();
 
-    ImGui::TextUnformatted("Шаблоны ответов (каждый с новой строки):");
+    ImGui::TextUnformatted("Шаблоны ответов (с новой строки):");
     ImGui::SetNextItemWidth(-1);
-    ImGui::InputTextMultiline("##admin_ans", g_adminAnswers, sizeof(g_adminAnswers), ImVec2(-1, 100.0f * scale));
+    ImGui::InputTextMultiline("##admin_ans", g_adminAnswers, sizeof(g_adminAnswers), ImVec2(-1, 80.0f * scale));
     ImGui::Spacing();
 
-    if(XoneButton("Тест сирены / звукового сигнала", scale, false, -1.0f, 32.0f))
+    if(XoneButton("Тест сирены / звукового сигнала", scale, false, -1.0f, 26.0f))
     {
         PlayTramAlertSignal();
     }
@@ -2341,13 +2532,10 @@ void RenderMenu()
         {"##tab_factory", "Пешеходы", 4, false},
         {"##tab_pilot", "Pilot", 5, false},
         {"##tab_plow", "Поливалка (Авто)", 6, false},
-        {"##tab_admin", "Админы", 7, true},
-        {"##tab_misc", "Прочее", 10, false},
-        {"##tab_plugins", "Плагины", 9, false}
+        {"##tab_admin", "Админы", 7, true}
     };
     const bool isPro = IsProLicense();
-    const bool hasPlugins = (Editions::Current() >= BuildEdition::Extended || Editions::HasPluginModule());
-    const int tabCount = hasPlugins ? 10 : 9;
+    const int tabCount = 8;
     for(int i = 0; i < tabCount; ++i)
     {
         ImVec2 tabPos(origin.x + 8.0f * scale, origin.y + (54.0f + i * 33.0f) * scale);
@@ -2494,14 +2682,6 @@ void RenderMenu()
     {
         DrawLicenseTab(contentPosition, contentSize, scale);
     }
-    else if(g_activeTab == 9)
-    {
-        DrawPluginModuleTab(contentPosition, contentSize, scale);
-    }
-    else if(g_activeTab == 10)
-    {
-        DrawMiscTab(contentPosition, contentSize, scale);
-    }
     ImGui::PopFont();
 
     ImGui::End();
@@ -2526,8 +2706,11 @@ void RenderFrame(IDirect3DDevice9* device)
         if(visible && g_clipCursor)
             g_clipCursor(nullptr);
     }
-    toggleHeld = toggleDown;
-    if(!g_visible.load())
+    const bool menuOpen = g_visible.load();
+    const bool hudActive = (AdminDatabase::Instance().hudEnabled || AdminDatabase::Instance().hudConfigMode);
+    const bool toastActive = AdminDatabase::Instance().IsToastActive();
+
+    if(!menuOpen && !hudActive && !toastActive)
     {
         ImGui::GetIO().MouseDrawCursor = false;
         return;
@@ -2535,7 +2718,16 @@ void RenderFrame(IDirect3DDevice9* device)
     ImGui_ImplDX9_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
-    RenderMenu();
+    if(!menuOpen)
+    {
+        ImGui::GetIO().MouseDrawCursor = false;
+    }
+    if(menuOpen)
+    {
+        RenderMenu();
+    }
+    RenderAdminCheckerHud(1.0f);
+    RenderAdminToast(1.0f);
     ImGui::Render();
     ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
 }

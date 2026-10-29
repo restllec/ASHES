@@ -59,6 +59,7 @@
     <ClCompile Include="embedded_lua_loader.c"><CompileAs>CompileAsC</CompileAs></ClCompile>
     <ClCompile Include="embedded_lua_runtime.c"><CompileAs>CompileAsC</CompileAs></ClCompile>
     <ClCompile Include="embedded_lua_selftest.c"><CompileAs>CompileAsC</CompileAs></ClCompile>
+    <ClCompile Include="admin_database.cpp" />
     <ClCompile Include="forensic_hooks.cpp" />
     <ClCompile Include="gui.cpp" />
     <ClCompile Include="license_manager.cpp" />
@@ -146,6 +147,7 @@
     <ClInclude Include="lua_bridge_utils.h" />
     <ClInclude Include="input_utils.h" />
     <ClInclude Include="memory_utils.h" />
+    <ClInclude Include="admin_database.h" />
     <ClInclude Include="forensic_hooks.h" />
     <ClInclude Include="gui.h" />
     <ClInclude Include="license_manager.h" />

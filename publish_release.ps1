@@ -1,7 +1,7 @@
 param(
-    [string]$Version = "1.0.3",
-    [string]$Title = "ASHES Release v$Version",
-    [string]$Notes = "Automatic update release v$Version"
+    [string]$Version = "1.7.0",
+    [string]$Title = "ASHES v$Version (Unified Tram Routes & Loader Update)",
+    [string]$Notes = "Release v$($Version) - unified tram routes, loader cleanup, lesorub module, and misc ingame settings."
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +27,7 @@ $filesToPack = @(
     "$outputDir\AshesClient.dll",
     "$outputDir\JBKBot.lua",
     "$outputDir\jtu_bot.lua",
+    "$outputDir\lesorub.lua",
     "$outputDir\PilotTelemetry.lua",
     "$outputDir\PlowBot.lua",
     "$outputDir\PlowMarks.txt",
@@ -50,11 +51,16 @@ $assets = @(
     "$outputDir\PolivTram.lua",
     "$outputDir\JBKBot.lua",
     "$outputDir\jtu_bot.lua",
+    "$outputDir\lesorub.lua",
     "$outputDir\tobacco.lua",
     "$outputDir\PilotTelemetry.lua",
     "$outputDir\PlowMarks.txt",
     $desktopArchive
 )
+
+if (Test-Path "$outputDir\WinterCat.exe") {
+    $assets += "$outputDir\WinterCat.exe"
+}
 
 & $gh release create "v$Version" $assets --title "$Title" --notes "$Notes"
 Write-Host "Релиз v$Version успешно опубликован на GitHub!" -ForegroundColor Green

@@ -495,10 +495,14 @@ void DrawPilotTelemetry(ImVec2 position, ImVec2 size, float scale)
         IM_COL32(80, 80, 80, 0), IM_COL32(140, 140, 140, 180), IM_COL32(140, 140, 140, 180));
     text(18, 12, "PILOT", 28, white);
     text(116, 22, "// FLIGHT CONTROL", 13, violet);
-    const std::string destination = state["destination"].empty() ? "Маршрут не назначен" : state["destination"];
-    text(374, 17, destination, 18, white);
-    draw->AddCircleFilled(point(width - 159, 25), 3 * scale, statusColor);
-    text(width - 148, 17, !online ? "OFFLINE" : autopilot ? "AP ACTIVE" : "STANDBY", 16, statusColor);
+    const std::string destination = state["destination"].empty() ? "ещё не назначен" : state["destination"];
+    const std::string st = !online ? "OFFLINE" : autopilot ? "AP ACTIVE" : "STANDBY";
+    const std::string fullStatus = st + "  /  " + destination;
+    const float statusTextWidth = ImGui::CalcTextSize(fullStatus.c_str()).x;
+    at(18, 16);
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - statusTextWidth - 20.0f * scale);
+    draw->AddCircleFilled(point(width - (statusTextWidth / scale) - 28, 23), 3.5f * scale, statusColor);
+    ImGui::TextColored(ImVec4(0.9f, 0.85f, 0.95f, 1.0f), "%s", fullStatus.c_str());
     const std::string status = !online ? "Ожидание подключения" : state["autopilot_status"].empty() ? "Готов к запуску" : state["autopilot_status"];
     text(18, 44, status, 12, muted);
 
@@ -539,19 +543,33 @@ void DrawPilotTelemetry(ImVec2 position, ImVec2 size, float scale)
 
     const char* metricNames[]{"СКОРОСТЬ", "КУРС", "ВЫСОТА", "ВЕРТ. СКОРОСТЬ"};
     const char* metricUnits[]{"км/ч", "град", "м", "м/с"};
-    for(int i = 0; i < 4; ++i)
+
+    at(rightX, 64);
+    if(ImGui::BeginTable("pilot_gauges", 4, ImGuiTableFlags_SizingFixedFit, ImVec2(rightWidth * scale, 82.0f * scale)))
     {
-        const float x = rightX + i * (metricWidth + 10);
-        card(x, 64, metricWidth, 80);
-        text(x + 14, 77, metricNames[i], 11, muted);
-        text(x + 13, 98, values[i], 30, i == 0 ? violet : white);
-        text(x + metricWidth - 51, 112, metricUnits[i], 12, muted);
+        for(int i = 0; i < 4; ++i)
+        {
+            ImGui::TableSetupColumn(metricNames[i], ImGuiTableColumnFlags_WidthFixed, (metricWidth + 10) * scale);
+        }
+        ImGui::TableNextRow(0, 80.0f * scale);
+        for(int i = 0; i < 4; ++i)
+        {
+            ImGui::TableSetColumnIndex(i);
+            const float x = rightX + i * (metricWidth + 10);
+            card(x, 64, metricWidth, 80);
+            ImGui::AlignTextToFramePadding();
+            text(x + 12, 74, metricNames[i], 11, muted);
+            text(x + 12, 94, values[i], 24, i == 0 ? violet : white);
+            text(x + metricWidth - 48, 110, metricUnits[i], 11, muted);
+        }
+        ImGui::EndTable();
     }
 
     const float navWidth = rightWidth * 0.47f;
     const float planeX = rightX + navWidth + 10;
+    const float planeW = rightWidth - navWidth - 10;
     card(rightX, 154, navWidth, 120);
-    card(planeX, 154, rightWidth - navWidth - 10, 120);
+    card(planeX, 154, planeW, 120);
     text(rightX + 14, 166, "НАВЕДЕНИЕ", 11, muted);
     const ImVec2 center = point(rightX + 59, 222);
     draw->AddCircle(center, 31 * scale, IM_COL32(70, 70, 70, 255), 40);
@@ -574,53 +592,95 @@ void DrawPilotTelemetry(ImVec2 position, ImVec2 size, float scale)
     text(rightX + navWidth * 0.64f, 194, values[8] + " м", 21, violet);
     text(rightX + navWidth * 0.64f, 230, values[11] + "  /  DZ " + values[15], 11, muted);
     text(planeX + 14, 166, "СОСТОЯНИЕ БОРТА", 11, muted);
-    text(planeX + 14, 191, "AGL  " + values[4] + " м", 18, white);
-    text(planeX + 14, 224, "ТАНГАЖ " + values[5] + "°   КРЕН " + values[6] + "°", 13, muted);
-    text(planeX + 14, 250, "Шасси: " + values[9], 12, violet);
-    text(planeX + 280, 191, values[10], 13, mint);
-    text(planeX + 280, 221, "ГАЗ " + values[13] + "%", 12, muted);
-    text(planeX + 280, 247, "ТОРМОЗ " + values[14] + "%", 12, muted);
+    text(planeX + 14, 191, "AGL " + values[4] + " м", 16, white);
+    text(planeX + 14, 222, "ТАНГАЖ " + values[5] + "°  КРЕН " + values[6] + "°", 12, muted);
+    text(planeX + 14, 248, "Шасси: " + values[9], 12, violet);
+    const float planeCol2 = planeX + planeW * 0.58f;
+    text(planeCol2, 191, values[10], 13, mint);
+    text(planeCol2, 221, "ГАЗ " + values[13] + "%", 12, muted);
+    text(planeCol2, 247, "ТОРМОЗ " + values[14] + "%", 12, muted);
 
     const float recorderWidth = (width - 44) * 0.53f;
     const float noticeX = recorderWidth + 28;
-    card(16, 284, recorderWidth, 112);
-    card(noticeX, 284, width - noticeX - 16, 112);
-    text(32, 297, "РЕГИСТРАТОР", 11, muted);
-    draw->AddCircleFilled(point(196, 303), 3 * scale, recording ? red : muted);
-    text(207, 296, recording ? "REC" : "IDLE", 12, recording ? red : muted);
+    const float noticeWidth = width - noticeX - 16;
+
     char disk[128]{};
-    std::snprintf(disk, sizeof(disk), "%.2f MB  /  %s", bytes / 1048576.0,
+    std::snprintf(disk, sizeof(disk), "%.2f MB / %s", bytes / 1048576.0,
         !error.empty() ? "ОШИБКА" : draining ? "ЗАПИСЬ..." : "СОХРАНЕНО");
-    text(recorderWidth - 247, 298, disk, 12, !error.empty() ? red : muted);
-    button(recording ? "Остановить запись###pilot_record" : "Начать запись###pilot_record",
-        recording ? "stop" : "start", 32, 321, 220, 29, ready && error.empty());
-    at(268, 322);
-    ImGui::BeginDisabled(!online);
-    ImGui::SetNextItemWidth(108 * scale);
-    if(ImGui::Combo("##pilot_rate", &g_rate, "50 Гц\0" "20 Гц\0" "10 Гц\0" "5 Гц\0"))
-    {
-        constexpr int intervals[]{20, 50, 100, 200};
-        Queue("interval:" + std::to_string(intervals[g_rate]));
-    }
-    ImGui::EndDisabled();
-    text(396, 329, (state["samples"].empty() ? "--" : state["samples"]) + " отсчётов", 13, muted);
-    ImGui::BeginDisabled(!recording);
-    at(32, 360);
-    ImGui::SetNextItemWidth((recorderWidth - 142) * scale);
-    ImGui::InputTextWithHint("##pilot_note", "Метка полёта...", g_note, sizeof(g_note));
-    button("В лог", (std::string("note:") + g_note).c_str(), recorderWidth - 98, 360, 98, 26, recording);
-    ImGui::EndDisabled();
-    text(noticeX + 14, 297, "ЗАДАЧА РЕЙСА", 11, violet);
-    text(width - 110, 297, "MSG " + (state["notification_count"].empty() ? "--" : state["notification_count"]), 11, muted);
+
     std::string notification = state["notification"];
     if(const auto newline = notification.find('\n'); newline != std::string::npos) notification.erase(0, newline + 1);
     if(notification.empty()) notification = "Ожидание задания";
-    draw->PushClipRect(point(noticeX + 14, 320), point(width - 28, 383), true);
-    text(noticeX + 14, 322, notification, 16, white, width - noticeX - 44);
-    draw->PopClipRect();
-    at(noticeX + 14, 320);
-    ImGui::InvisibleButton("##pilot_notification", ImVec2((width - noticeX - 44) * scale, 63 * scale * vertical));
-    if(ImGui::IsItemHovered()) ImGui::SetTooltip("%s", notification.c_str());
+
+    // Левая панель — Регистратор
+    at(16, 284);
+    if(ImGui::BeginChild("pilot_recorder", ImVec2(recorderWidth * scale, 140.0f * scale), true))
+    {
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.75f, 1.0f), "РЕГИСТРАТОР");
+        ImGui::SameLine();
+        ImGui::TextColored(recording ? ImVec4(0.95f, 0.3f, 0.3f, 1.0f) : ImVec4(0.5f, 0.5f, 0.55f, 1.0f),
+            recording ? "[REC]" : "[IDLE]");
+        ImGui::SameLine();
+        const float diskW = ImGui::CalcTextSize(disk).x;
+        ImGui::SetCursorPosX(recorderWidth * scale - diskW - 14.0f * scale);
+        ImGui::TextDisabled("%s", disk);
+
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::BeginDisabled(!ready || !error.empty());
+        if(ImGui::Button(recording ? "Остановить запись###pilot_rec" : "Начать запись###pilot_rec",
+            ImVec2(180.0f * scale, 26.0f * scale)))
+        {
+            Queue(recording ? "stop" : "start");
+        }
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!online);
+        ImGui::SetNextItemWidth(90.0f * scale);
+        if(ImGui::Combo("##pilot_rate", &g_rate, "50 Гц\0" "20 Гц\0" "10 Гц\0" "5 Гц\0"))
+        {
+            constexpr int intervals[]{20, 50, 100, 200};
+            Queue("interval:" + std::to_string(intervals[g_rate]));
+        }
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s отсч.", (state["samples"].empty() ? "--" : state["samples"].c_str()));
+
+        ImGui::Spacing();
+        ImGui::BeginDisabled(!recording);
+        ImGui::SetNextItemWidth(recorderWidth * scale - 94.0f * scale - 24.0f * scale);
+        ImGui::InputTextWithHint("##pilot_note", "Метка полёта...", g_note, sizeof(g_note));
+        ImGui::SameLine();
+        if(ImGui::Button("В лог", ImVec2(90.0f * scale, 24.0f * scale)))
+        {
+            Queue(std::string("note:") + g_note);
+        }
+        ImGui::EndDisabled();
+    }
+    ImGui::EndChild();
+
+    // Правая панель — Задача рейса
+    at(noticeX, 284);
+    if(ImGui::BeginChild("pilot_task", ImVec2(noticeWidth * scale, 140.0f * scale), true))
+    {
+        ImGui::TextColored(ImVec4(0.75f, 0.65f, 0.95f, 1.0f), "ЗАДАЧА РЕЙСА");
+        ImGui::SameLine();
+        std::string msgText = "MSG " + (state["notification_count"].empty() ? "--" : state["notification_count"]);
+        const float msgW = ImGui::CalcTextSize(msgText.c_str()).x;
+        ImGui::SetCursorPosX(noticeWidth * scale - msgW - 14.0f * scale);
+        ImGui::TextDisabled("%s", msgText.c_str());
+
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::PushTextWrapPos(noticeWidth * scale - 12.0f * scale);
+        ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, 1.0f), "%s", notification.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::EndChild();
 
     std::string failure = error.empty() ? "" : "Лог: " + error;
     const char* errorKeys[]{"collector_error", "autopilot_hud_error", "autopilot_sound_error", "observer_error"};
