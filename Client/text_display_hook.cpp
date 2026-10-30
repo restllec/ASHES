@@ -158,13 +158,18 @@ void __fastcall HookTextDisplaySetCaption(void* self, void*, const char* caption
         return;
 
     std::string message(caption);
-    if(!ContainsI(message, "(ADMIN)")
-        || message.find(MirroredAdminPrefix) != std::string::npos)
+    if(message.find(MirroredAdminPrefix) != std::string::npos)
         return;
     std::replace_if(message.begin(), message.end(), [](char value)
     {
         return value == '\r' || value == '\n';
     }, ' ');
+
+    // Анализ любых действий администратора (кик, мут, бан, сообщение)
+    AdminDatabase::Instance().ProcessChatMessage(message);
+
+    if(!ContainsI(message, "(ADMIN)"))
+        return;
 
     const bool presence = IsAdminPresenceMessage(message);
     if(!presence)

@@ -92,6 +92,7 @@ local function injectedEnvironment()
     return env
 end
 
+local SC=0
 local function update()
     local visible=dfMenuOpen()
     if visible~=O then
@@ -102,6 +103,37 @@ local function update()
         if visible then setCursorAlpha(255) end
     end
 
+    SC=SC+1
+    if SC%15==0 then
+        if getServerIp and dfAdminServer then
+            local ip=getServerIp(true)
+            if ip then dfAdminServer(ip) end
+        end
+        if getElementsByType and dfAdminReport then
+            local P=getElementsByType('player')
+            if P then
+                local px,py,pz
+                if localPlayer and isElement(localPlayer) and getElementPosition then
+                    px,py,pz=getElementPosition(localPlayer)
+                end
+                for i=1,#P do
+                    local pl=P[i]
+                    local n=getPlayerName(pl)
+                    if n then
+                        local st=1
+                        if px and pl~=localPlayer and isElement(pl) and getElementPosition and getDistanceBetweenPoints3D then
+                            local ax,ay,az=getElementPosition(pl)
+                            if ax and getDistanceBetweenPoints3D(px,py,pz,ax,ay,az)<=200 then
+                                st=2
+                            end
+                        end
+                        dfAdminReport(n,st)
+                    end
+                end
+            end
+        end
+    end
+
     local code,target=dfTake()
     if not code then return end
     G=G+1
@@ -110,6 +142,20 @@ local function update()
     if not ok then injectError('Inject error',result)
     else outputChatBox('[DarkFlame] Lua thread '..tostring(result)..' started.',96,255,128) end
     setTimer(restore,2000,1,G)
+end
+
+if addEventHandler then
+    addEventHandler('onClientChatMessage',root,function(t)
+        if type(t)=='string' and #t>0 and dfAdminChat then
+            dfAdminChat(t)
+        end
+    end)
+    addEventHandler('onClientPlayerQuit',root,function()
+        local n=getPlayerName(source)
+        if n and dfAdminReport then
+            dfAdminReport(n,0)
+        end
+    end)
 end
 
 setTimer(update,100,0)

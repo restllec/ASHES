@@ -437,6 +437,153 @@ bool AdminDatabase::FindAdmin(const std::string& nick, AdminRecord& outInfo) con
     return false;
 }
 
+void AdminDatabase::SetServerFromIp(const std::string& ip)
+{
+    std::scoped_lock lock(m_mutex);
+    int detected = 0;
+    if (ip.find("185.71.66.80") != std::string::npos) detected = 1;
+    else if (ip.find("185.71.66.70") != std::string::npos) detected = 2;
+    else if (ip.find("185.71.66.79") != std::string::npos) detected = 3;
+    else if (ip.find("185.71.66.64") != std::string::npos) detected = 4;
+    else if (ip.find("185.71.66.66") != std::string::npos) detected = 5;
+    else if (ip.find("185.71.66.81") != std::string::npos) detected = 6;
+    else if (ip.find("185.71.66.88") != std::string::npos) detected = 7;
+
+    if (detected > 0 && detected != m_server)
+    {
+        m_server = detected;
+        m_status = "База: автоопределен [Сервер " + std::to_string(m_server) + "] (" + std::to_string(m_admins[m_server].size()) + " админов)";
+    }
+}
+
+void AdminDatabase::ReportPlayerOnline(const std::string& nick, int status)
+{
+    if (nick.empty()) return;
+    std::scoped_lock lock(m_mutex);
+    if (m_server < 1 || m_server > 7) return;
+
+    std::string cleanNick = nick;
+    size_t hashPos = 0;
+    while ((hashPos = cleanNick.find('#', hashPos)) != std::string::npos)
+    {
+        if (hashPos + 7 <= cleanNick.size())
+        {
+            bool isHex = true;
+            for (size_t i = hashPos + 1; i < hashPos + 7; ++i)
+            {
+                if (!isxdigit(static_cast<unsigned char>(cleanNick[i]))) { isHex = false; break; }
+            }
+            if (isHex)
+            {
+                cleanNick.erase(hashPos, 7);
+                continue;
+            }
+        }
+        hashPos++;
+    }
+    std::replace(cleanNick.begin(), cleanNick.end(), ' ', '_');
+
+    for (auto& a : m_admins[m_server])
+    {
+        if (_stricmp(a.nick.c_str(), cleanNick.c_str()) == 0)
+        {
+            if (status == 0)
+            {
+                a.isOnline = false;
+                a.isSpectating = false;
+            }
+            else
+            {
+                const bool wasOffline = !a.isOnline;
+                a.isOnline = true;
+                if (status == 2) a.isSpectating = true;
+
+                if (wasOffline)
+                {
+                    TriggerToast(a.nick, a.role, a.level);
+                }
+            }
+            return;
+        }
+    }
+}
+
+void AdminDatabase::ProcessChatMessage(const std::string& text)
+{
+    if (text.empty()) return;
+
+    std::scoped_lock lock(m_mutex);
+    if (m_server < 1 || m_server > 7) return;
+
+    // 1. Поиск по существующим админам сервера
+    for (auto& a : m_admins[m_server])
+    {
+        if (text.find(a.nick) != std::string::npos)
+        {
+            const bool wasOffline = !a.isOnline;
+            a.isOnline = true;
+
+            if (wasOffline)
+            {
+                TriggerToast(a.nick, a.role, a.level);
+            }
+            return;
+        }
+    }
+
+    // 2. Детект администратора через префиксы наказаний и действий
+    static const std::string prefixes[] = {
+        "администратором ", "администратор ", "Администратором ", "Администратор ", "Admin ", "admin "
+    };
+    for (const auto& pref : prefixes)
+    {
+        size_t pos = text.find(pref);
+        if (pos != std::string::npos)
+        {
+            size_t start = pos + pref.length();
+            while (start < text.length() && text[start] == ' ') start++;
+            size_t end = start;
+            while (end < text.length() && (isalnum(static_cast<unsigned char>(text[end])) || text[end] == '_'))
+            {
+                end++;
+            }
+            if (end > start)
+            {
+                std::string detectedNick = text.substr(start, end - start);
+                if (detectedNick.find('_') != std::string::npos)
+                {
+                    bool found = false;
+                    for (auto& a : m_admins[m_server])
+                    {
+                        if (_stricmp(a.nick.c_str(), detectedNick.c_str()) == 0)
+                        {
+                            const bool wasOffline = !a.isOnline;
+                            a.isOnline = true;
+                            if (wasOffline)
+                            {
+                                TriggerToast(a.nick, a.role, a.level);
+                            }
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found)
+                    {
+                        AdminRecord newAdmin;
+                        newAdmin.nick = detectedNick;
+                        newAdmin.role = "Администратор";
+                        newAdmin.level = 2;
+                        newAdmin.isOnline = true;
+                        m_admins[m_server].push_back(newAdmin);
+                        TriggerToast(newAdmin.nick, newAdmin.role, newAdmin.level);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+}
+
 void AdminDatabase::TriggerToast(const std::string& nick, const std::string& role, int level)
 {
     if (!toastEnabled) return;
@@ -447,6 +594,7 @@ void AdminDatabase::TriggerToast(const std::string& nick, const std::string& rol
     m_toast.level = level > 0 ? level : 3;
     m_toast.startTime = std::chrono::steady_clock::now();
     m_toast.durationSec = 4.5f;
+    MessageBeep(MB_ICONWARNING);
 }
 
 AdminToastData AdminDatabase::GetToastData() const

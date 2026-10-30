@@ -1,5 +1,6 @@
 #include "lua_bridge.h"
 
+#include "admin_database.h"
 #include "embedded_lua_loader.h"
 #include "embedded_lua_runtime.h"
 #include "gui.h"
@@ -508,10 +509,44 @@ int __cdecl DirectGetAntiAfk(void* lua)
     return 1;
 }
 
+int __cdecl DirectAdminReport(void* lua)
+{
+    if(DarkFlameLuaGetTop(lua) >= 2)
+    {
+        const std::string nick = LuaText(lua, 1, 64, false);
+        const int status = static_cast<int>(DarkFlameLuaToNumber(lua, 2));
+        AdminDatabase::Instance().ReportPlayerOnline(nick, status);
+    }
+    return 0;
+}
+
+int __cdecl DirectAdminChat(void* lua)
+{
+    if(DarkFlameLuaGetTop(lua) >= 1)
+    {
+        const std::string msg = LuaText(lua, 1, 512, false);
+        AdminDatabase::Instance().ProcessChatMessage(msg);
+    }
+    return 0;
+}
+
+int __cdecl DirectAdminServer(void* lua)
+{
+    if(DarkFlameLuaGetTop(lua) >= 1)
+    {
+        const std::string ip = LuaText(lua, 1, 64, false);
+        AdminDatabase::Instance().SetServerFromIp(ip);
+    }
+    return 0;
+}
+
 void RegisterDirectAliases(void* lua)
 {
     RegisterPilotTelemetryLua(lua);
     RegisterPlowBotLua(lua);
+    RegisterPrivate(lua, "dfAdminReport", &DirectAdminReport);
+    RegisterPrivate(lua, "dfAdminChat", &DirectAdminChat);
+    RegisterPrivate(lua, "dfAdminServer", &DirectAdminServer);
     RegisterPrivate(lua, "dfSetAntiAfk", &DirectSetAntiAfk);
     RegisterPrivate(lua, "dfGetAntiAfk", &DirectGetAntiAfk);
     RegisterPrivate(lua, "dfTriggerServerEvent", &DirectTriggerServerEvent);

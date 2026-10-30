@@ -37,6 +37,10 @@ public:
     std::vector<AdminRecord> GetCurrentServerAdmins() const;
     bool FindAdmin(const std::string& nick, AdminRecord& outInfo) const;
 
+    void ReportPlayerOnline(const std::string& nick, int status); // status: 0=offline, 1=online, 2=spectating
+    void ProcessChatMessage(const std::string& text);
+    void SetServerFromIp(const std::string& ip);
+
     void TriggerToast(const std::string& nick, const std::string& role, int level);
     AdminToastData GetToastData() const;
     bool IsToastActive() const;
