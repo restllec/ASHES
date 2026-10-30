@@ -1034,8 +1034,8 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 
     // 1. Верхняя панель (Top Header): иконка + заголовок/подзаголовок, селектор маршрута + статус, акцентная кнопка запуска
     const float availW = ImGui::GetContentRegionAvail().x;
-    const float actionBtnW = 180.0f * scale;
-    const float actionBtnH = 34.0f * scale;
+    const float actionBtnW = 145.0f * scale;
+    const float actionBtnH = 32.0f * scale;
 
     // Слева: Иконка + заголовок
     ImGui::BeginGroup();
@@ -1046,17 +1046,15 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::EndGroup();
 
     // По центру: Селектор маршрута + Индикатор состояния
-    ImGui::SameLine(0.0f, 16.0f * scale);
+    ImGui::SameLine(0.0f, 10.0f * scale);
     ImGui::BeginGroup();
-    ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.80f, 1.0f), "Маршрут:");
-    ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(22, 23, 28, 255));
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(36, 38, 46, 255));
     ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(48, 50, 62, 255));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f * scale);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f * scale, 5.0f * scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f * scale, 4.0f * scale));
 
-    const float comboW = 190.0f * scale;
+    const float comboW = 135.0f * scale;
     ImGui::SetNextItemWidth(comboW);
     if(ImGui::BeginCombo("##tram_route_select", curRoute.label))
     {
@@ -1089,9 +1087,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PopStyleVar(2);
     ImGui::PopStyleColor(3);
 
-    ImGui::SameLine(0.0f, 10.0f * scale);
-    ImGui::TextUnformatted("Состояние:");
-    ImGui::SameLine();
+    ImGui::SameLine(0.0f, 6.0f * scale);
     const bool isRunning = state.bot;
     if(isRunning)
     {
@@ -1104,7 +1100,11 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::EndGroup();
 
     // Справа: Большая акцентная розовая/пурпурная кнопка
-    ImGui::SameLine(availW - actionBtnW);
+    ImGui::SameLine();
+    const float rightBtnX = availW - actionBtnW;
+    if(ImGui::GetCursorPosX() < rightBtnX)
+        ImGui::SetCursorPosX(rightBtnX);
+
     const char* actionBtnLabel = isRunning ? "[ ⏹ Остановить ]" : "[ ⏻ Запустить бота ]";
     const ImU32 actionBtnColor = isRunning ? IM_COL32(215, 55, 55, 255) : IM_COL32(215, 55, 125, 255);
     const ImU32 actionBtnHover = isRunning ? IM_COL32(240, 75, 75, 255) : IM_COL32(235, 75, 145, 255);
@@ -1836,6 +1836,16 @@ void RenderAdminCheckerHud(float scale)
     if(!db.hudEnabled && !db.hudConfigMode)
         return;
 
+    auto admins = db.GetCurrentServerAdmins();
+    int onlineCount = 0;
+    for(const auto& a : admins)
+    {
+        if(a.isOnline || a.isSpectating) onlineCount++;
+    }
+
+    if(onlineCount == 0 && !db.hudConfigMode)
+        return;
+
     const bool menuOpen = g_visible.load();
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings;
     if(!menuOpen && !db.hudConfigMode)
@@ -1856,7 +1866,6 @@ void RenderAdminCheckerHud(float scale)
     {
         ImGui::SetWindowFontScale(db.hudScale);
         int s = db.GetServer();
-        auto admins = db.GetCurrentServerAdmins();
 
         ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f), "ADMIN CHECKER [Сервер %d]", s);
         if(menuOpen || db.hudConfigMode)
@@ -1866,30 +1875,7 @@ void RenderAdminCheckerHud(float scale)
         }
         ImGui::Separator();
 
-        int onlineCount = 0;
-        for(const auto& a : admins)
-        {
-            if(a.isOnline || a.isSpectating) onlineCount++;
-        }
-
-        if(onlineCount == 0)
-        {
-            ImGui::TextColored(ImVec4(0.55f, 0.55f, 0.6f, 1.0f), "Онлайн: 0 / В базе: %zu", admins.size());
-            size_t maxShow = (std::min)(admins.size(), static_cast<size_t>(6));
-            for(size_t i = 0; i < maxShow; ++i)
-            {
-                const auto& a = admins[i];
-                ImU32 dotColor = a.isOnline ? IM_COL32(80, 225, 120, 255) :
-                                 a.isSpectating ? IM_COL32(245, 185, 55, 255) :
-                                 IM_COL32(100, 100, 115, 180);
-                ImVec2 p = ImGui::GetCursorScreenPos();
-                ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(p.x + 5.0f * scale, p.y + 8.0f * scale), 3.5f * scale, dotColor);
-                ImGui::Dummy(ImVec2(12.0f * scale, 1.0f));
-                ImGui::SameLine();
-                ImGui::Text("%s [%s | %d ур.]", a.nick.c_str(), a.role.c_str(), a.level);
-            }
-        }
-        else
+        if(onlineCount > 0)
         {
             ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.5f, 1.0f), "Онлайн: %d", onlineCount);
             for(const auto& a : admins)
@@ -1902,6 +1888,12 @@ void RenderAdminCheckerHud(float scale)
                 ImGui::SameLine();
                 ImGui::Text("%s [%s | %d ур.]", a.nick.c_str(), a.role.c_str(), a.level);
             }
+        }
+        else if(db.hudConfigMode)
+        {
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.8f, 1.0f), "Режим настройки HUD");
+            ImGui::TextDisabled("Перетащите окно в удобное место экрана");
+            ImGui::TextColored(ImVec4(0.85f, 0.65f, 0.25f, 1.0f), "• Тестовый_Админ [Модератор | 1 ур.]");
         }
         ImGui::SetWindowFontScale(1.0f);
     }
@@ -2012,9 +2004,12 @@ void DrawAdminTab(ImVec2 position, ImVec2 size, float scale)
     ImGui::TextColored(ImVec4(0.4f, 0.85f, 0.5f, 1.0f), "%s", db.GetStatusString().c_str());
     ImGui::Spacing();
 
-    XonePlashkaToggle("Включить HUD админчекера", &db.hudEnabled, scale);
-    XonePlashkaToggle("Режим настройки положения HUD", &db.hudConfigMode, scale);
-    XonePlashkaToggle("Всплывающие уведомления (Toast)", &db.toastEnabled, scale);
+    if(XonePlashkaToggle("Включить HUD админчекера", &db.hudEnabled, scale))
+        db.SaveSettings();
+    if(XonePlashkaToggle("Режим настройки положения HUD", &db.hudConfigMode, scale))
+        db.SaveSettings();
+    if(XonePlashkaToggle("Всплывающие уведомления (Toast)", &db.toastEnabled, scale))
+        db.SaveSettings();
 
     int alphaPct = static_cast<int>(db.hudAlpha * 100.0f);
     if(XonePlashkaInt("Непрозрачность HUD (%)", &alphaPct, 20, 100, scale))
@@ -2869,9 +2864,20 @@ void RenderFrame(IDirect3DDevice9* device)
         if(visible && g_clipCursor)
             g_clipCursor(nullptr);
     }
+    toggleHeld = toggleDown;
+
     const bool menuOpen = g_visible.load();
-    const bool hudActive = (AdminDatabase::Instance().hudEnabled || AdminDatabase::Instance().hudConfigMode);
-    const bool toastActive = AdminDatabase::Instance().IsToastActive();
+    auto& db = AdminDatabase::Instance();
+    int onlineCount = 0;
+    if(db.hudEnabled)
+    {
+        for(const auto& a : db.GetCurrentServerAdmins())
+        {
+            if(a.isOnline || a.isSpectating) onlineCount++;
+        }
+    }
+    const bool hudActive = (db.hudEnabled && (onlineCount > 0 || db.hudConfigMode));
+    const bool toastActive = db.IsToastActive();
 
     if(!menuOpen && !hudActive && !toastActive)
     {
