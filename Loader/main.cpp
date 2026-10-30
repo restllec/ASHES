@@ -466,21 +466,6 @@ void DrawLicenseCard(ImDrawList* draw, ImVec2 origin, float width)
     ImGui::TextUnformatted(g_license.hwid.c_str());
     ImGui::PopStyleColor();
 
-    char copyBtnText[32];
-    std::snprintf(copyBtnText, sizeof(copyBtnText), "%s##hwid", (g_copiedTimer > 0.0f) ? "Скопировано!" : "Копировать");
-    ImGui::SetCursorScreenPos(ImVec2(cardEnd.x - 96.0f, hwidY));
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(28, 30, 38, 255));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(40, 44, 56, 255));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(22, 24, 30, 255));
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(220, 225, 240, 255));
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-    if(ImGui::Button(copyBtnText, ImVec2(86.0f, 22.0f)))
-    {
-        ImGui::SetClipboardText(g_license.hwid.c_str());
-        g_copiedTimer = 2.0f;
-    }
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(4);
 
     // 3. Ввод ключа и Активация
     const float inputY = cardPos.y + 96.0f;
