@@ -591,14 +591,13 @@ void DrawPilotTelemetry(ImVec2 position, ImVec2 size, float scale)
     text(rightX + 111, 229, "ДОВОРОТ", 10, muted);
     text(rightX + navWidth * 0.64f, 194, values[8] + " м", 21, violet);
     text(rightX + navWidth * 0.64f, 230, values[11] + "  /  DZ " + values[15], 11, muted);
-    text(planeX + 14, 166, "СОСТОЯНИЕ БОРТА", 11, muted);
-    text(planeX + 14, 191, "AGL " + values[4] + " м", 16, white);
-    text(planeX + 14, 222, "ТАНГАЖ " + values[5] + "°  КРЕН " + values[6] + "°", 12, muted);
-    text(planeX + 14, 248, "Шасси: " + values[9], 12, violet);
-    const float planeCol2 = planeX + planeW * 0.58f;
-    text(planeCol2, 191, values[10], 13, mint);
-    text(planeCol2, 221, "ГАЗ " + values[13] + "%", 12, muted);
-    text(planeCol2, 247, "ТОРМОЗ " + values[14] + "%", 12, muted);
+    text(planeX + 14, 162, "СОСТОЯНИЕ БОРТА", 11, muted);
+    if(!values[10].empty())
+        text(planeX + planeW - 74, 162, values[10], 11, mint);
+    text(planeX + 14, 184, "Высота AGL: [ " + values[4] + " м ]", 12, white);
+    text(planeX + 14, 206, "Тангаж: [ " + values[5] + "° ] | Крен: [ " + values[6] + "° ]", 12, muted);
+    text(planeX + 14, 228, "Шасси: [ " + values[9] + " ]", 12, violet);
+    text(planeX + 14, 250, "Тормоз: [ " + values[14] + " % ] | Газ: [ " + values[13] + " % ]", 12, muted);
 
     const float recorderWidth = (width - 44) * 0.53f;
     const float noticeX = recorderWidth + 28;
@@ -617,12 +616,23 @@ void DrawPilotTelemetry(ImVec2 position, ImVec2 size, float scale)
     if(ImGui::BeginChild("pilot_recorder", ImVec2(recorderWidth * scale, 140.0f * scale), true))
     {
         ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.75f, 1.0f), "РЕГИСТРАТОР");
+        ImGui::SameLine(0, 10.0f * scale);
+        const ImVec4 badgeCol = recording ? ImVec4(0.95f, 0.3f, 0.3f, 1.0f) : ImVec4(0.55f, 0.58f, 0.65f, 1.0f);
+        ImGui::PushStyleColor(ImGuiCol_Border, recording ? IM_COL32(240, 75, 75, 180) : IM_COL32(80, 85, 105, 180));
+        ImGui::PushStyleColor(ImGuiCol_Text, badgeCol);
+        ImGui::PushStyleColor(ImGuiCol_Button, recording ? IM_COL32(40, 15, 15, 200) : IM_COL32(20, 22, 28, 200));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, recording ? IM_COL32(40, 15, 15, 200) : IM_COL32(20, 22, 28, 200));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, recording ? IM_COL32(40, 15, 15, 200) : IM_COL32(20, 22, 28, 200));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f * scale, 1.0f * scale));
+        ImGui::Button(recording ? "REC" : "IDLE");
+        ImGui::PopStyleVar(3);
+        ImGui::PopStyleColor(5);
+
+        ImGui::SameLine(0, 10.0f * scale);
+        ImGui::Dummy(ImVec2(8.0f * scale, 0.0f));
         ImGui::SameLine();
-        ImGui::TextColored(recording ? ImVec4(0.95f, 0.3f, 0.3f, 1.0f) : ImVec4(0.5f, 0.5f, 0.55f, 1.0f),
-            recording ? "[REC]" : "[IDLE]");
-        ImGui::SameLine();
-        const float diskW = ImGui::CalcTextSize(disk).x;
-        ImGui::SetCursorPosX(recorderWidth * scale - diskW - 14.0f * scale);
         ImGui::TextDisabled("%s", disk);
 
         ImGui::Separator();

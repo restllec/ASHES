@@ -409,7 +409,19 @@ int __cdecl DirectTramLog(void* lua)
     const std::string text = LuaText(lua, 1, 8192, false);
     if(text.empty())
         return PushDirectResult(lua, false);
-    Log::Tram(text);
+
+    std::string formatted = text;
+    if(formatted.rfind("[TramPolivBot]", 0) == 0)
+    {
+        formatted = "[PolivTram]" + formatted.substr(14);
+    }
+    else if(GuiGetTramSubMode() == 2 && formatted.rfind("[PolivTram]", 0) != 0)
+    {
+        formatted = "[PolivTram] " + formatted;
+    }
+
+    Log::Tram(formatted);
+    GuiAddTramLog(formatted);
     return PushDirectResult(lua, true);
 }
 

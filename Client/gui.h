@@ -23,6 +23,7 @@ bool GuiTakeJbkCommand(std::string& command);
 bool GuiTramBotEnabled();
 bool GuiTramSirenEnabled();
 void GuiQueueTramAdminCaption(std::string caption);
+void GuiAddTramLog(std::string_view msg);
 void GuiQueueJbkAdminCaption(std::string caption);
 bool GuiAdminAutoReplyEnabled();
 void GuiSetAdminAutoReplyEnabled(bool enabled);

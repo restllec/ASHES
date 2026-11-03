@@ -12,6 +12,8 @@
 #include "../Shared/ashes_logo.h"
 #include "../Shared/ashes_editions.h"
 #include "admin_database.h"
+#include "theme.h"
+#include "tram_icons.h"
 
 #include <MinHook.h>
 #define DIRECTINPUT_VERSION 0x0800
@@ -888,23 +890,66 @@ std::wstring GetSettingsIniPath()
     return L"settings.ini";
 }
 
+static bool s_themeLoaded = false;
+
+void LoadThemeSettings()
+{
+    if(s_themeLoaded) return;
+    std::wstring ini = GetSettingsIniPath();
+    wchar_t buf[64]{};
+    GetPrivateProfileStringW(L"Theme", L"AccentR", L"0.92", buf, 64, ini.c_str());
+    float r = std::wcstof(buf, nullptr);
+    GetPrivateProfileStringW(L"Theme", L"AccentG", L"0.18", buf, 64, ini.c_str());
+    float g = std::wcstof(buf, nullptr);
+    GetPrivateProfileStringW(L"Theme", L"AccentB", L"0.49", buf, 64, ini.c_str());
+    float b = std::wcstof(buf, nullptr);
+    if(r > 0.0f || g > 0.0f || b > 0.0f)
+    {
+        g_Theme.accentColor = ImVec4(r, g, b, 1.0f);
+        g_Theme.UpdateDerived();
+    }
+    s_themeLoaded = true;
+}
+
+void SaveThemeToConfig()
+{
+    std::wstring ini = GetSettingsIniPath();
+    wchar_t buf[64]{};
+    swprintf_s(buf, L"%.3f", g_Theme.accentColor.x);
+    WritePrivateProfileStringW(L"Theme", L"AccentR", buf, ini.c_str());
+    swprintf_s(buf, L"%.3f", g_Theme.accentColor.y);
+    WritePrivateProfileStringW(L"Theme", L"AccentG", buf, ini.c_str());
+    swprintf_s(buf, L"%.3f", g_Theme.accentColor.z);
+    WritePrivateProfileStringW(L"Theme", L"AccentB", buf, ini.c_str());
+}
+
+void ResetThemeSettings()
+{
+    g_Theme.accentColor = ImVec4(0.92f, 0.18f, 0.49f, 1.0f);
+    g_Theme.UpdateDerived();
+    SaveThemeToConfig();
+}
+
 struct TramRouteInfo {
     const char* label;
     const char* key;
     int subMode; // 0 = Passenger (TramBot), 1 = JTU (jtu_bot), 2 = PolivTram (PolivTram)
     bool requiresPro;
+    const char* category;
 };
 
 static const TramRouteInfo s_tramRoutes[] = {
-    { "Не выбран (IDLE)",                  "",         0, false },
-    { "Маршрут #3 (Мирный)",               "mirka3",   0, false },
-    { "Маршрут #8 (Мирный)",               "mirka8",   0, false },
-    { "Маршрут #2 (Приволжск)",            "priva2",   0, false },
-    { "Маршрут #7 (Приволжск)",            "priva7",   0, false },
-    { "Маршрут #8 (Приволжск)",            "priva8",   0, false },
-    { "Маршрут #100 (Невский)",            "neva100",  0, false },
-    { "ЖТУ (Служебный трамвай)",           "jtu",      1, true  },
-    { "Поливочный трамвай (PolivTram)",    "poliv",    2, true  }
+    { "Не выбран (IDLE)",                  "",        0, false, nullptr },
+    { "Маршрут #3 (Мирный)",               "mirka3",  0, false, "Пассажирские (Мирный)" },
+    { "Маршрут #8 (Мирный)",               "mirka8",  0, false, "Пассажирские (Мирный)" },
+    { "Маршрут #2 (Приволжск)",            "priva2",  0, false, "Пассажирские (Приволжск)" },
+    { "Маршрут #7 (Приволжск)",            "priva7",  0, false, "Пассажирские (Приволжск)" },
+    { "Маршрут #8 (Приволжск)",            "priva8",  0, false, "Пассажирские (Приволжск)" },
+    { "Маршрут #100 (Невский)",            "neva100", 0, false, "Пассажирские (Невский)" },
+    { "ЖТУ (Служебный трамвай)",           "jtu",     1, true,  "Специальные / Служебные" },
+    { "Поливочный трамвай (PolivTram)",    "current", 2, true,  "Специальные / Служебные" },
+    { "Поливалка (Мирный)",                "mirny",   2, true,  "Специальные / Служебные" },
+    { "Поливалка (Невский)",               "nevsky",  2, true,  "Специальные / Служебные" }
 };
 constexpr int s_numTramRoutes = static_cast<int>(sizeof(s_tramRoutes) / sizeof(s_tramRoutes[0]));
 
@@ -916,6 +961,7 @@ static void AddTramLog(const std::string& msg)
     GetLocalTime(&st);
     char timeBuf[32];
     std::snprintf(timeBuf, sizeof(timeBuf), "[%02d:%02d:%02d] ", st.wHour, st.wMinute, st.wSecond);
+    std::scoped_lock lock(g_bridgeMutex);
     if(s_tramLog.size() >= 100)
         s_tramLog.erase(s_tramLog.begin());
     s_tramLog.push_back(timeBuf + msg);
@@ -1026,7 +1072,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(20, 20, 20, 245));
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(40, 40, 40, 245));
     ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(65, 65, 65, 255));
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, IM_COL32(245, 245, 245, 255));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, g_Theme.AccentU32());
     ImGui::PushStyleColor(ImGuiCol_Separator, IM_COL32(80, 80, 80, 180));
     ImGui::BeginChild("##tram_bot", size, ImGuiChildFlags_Borders);
 
@@ -1034,69 +1080,40 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 
     // 1. Верхняя панель (Top Header): иконка + заголовок/подзаголовок, селектор маршрута + статус, акцентная кнопка запуска
     const float availW = ImGui::GetContentRegionAvail().x;
-    const float actionBtnW = 145.0f * scale;
-    const float actionBtnH = 32.0f * scale;
+    const float actionBtnW = 210.0f * scale;
+    const float actionBtnH = 38.0f * scale;
 
-    // Слева: Иконка + заголовок
+    // Слева: Розовая иконка трамвая + заголовок/подзаголовок
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 topIconPos = ImGui::GetCursorScreenPos();
+    TramIcons::DrawTram(dl, ImVec2(topIconPos.x, topIconPos.y + 4.0f * scale), 30.0f * scale, g_Theme.AccentU32());
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 36.0f * scale);
     ImGui::BeginGroup();
-    ImGui::TextColored(ImVec4(0.92f, 0.35f, 0.70f, 1.0f), "[ 🚊 ]");
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "TramBot");
-    ImGui::TextColored(ImVec4(0.52f, 0.54f, 0.60f, 1.0f), "Автоматизация работы трамвая в игре");
+    ImGui::TextColored(ImVec4(0.98f, 0.98f, 1.0f, 1.0f), "TramBot");
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f * scale);
+    ImGui::TextColored(ImVec4(0.50f, 0.52f, 0.58f, 1.0f), "Автоматизация работы трамвая в игре");
     ImGui::EndGroup();
 
-    // По центру: Селектор маршрута + Индикатор состояния
-    ImGui::SameLine(0.0f, 10.0f * scale);
+    // По центру: Индикатор состояния
+    ImGui::SameLine(0.0f, 24.0f * scale);
     ImGui::BeginGroup();
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(22, 23, 28, 255));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(36, 38, 46, 255));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(48, 50, 62, 255));
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f * scale);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f * scale, 4.0f * scale));
+    ImVec2 pulsePos = ImGui::GetCursorScreenPos();
+    TramIcons::DrawPulse(dl, ImVec2(pulsePos.x, pulsePos.y + 6.0f * scale), 18.0f * scale, g_Theme.AccentU32());
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 24.0f * scale);
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Состояние:");
+    ImGui::SameLine(0.0f, 8.0f * scale);
 
-    const float comboW = 135.0f * scale;
-    ImGui::SetNextItemWidth(comboW);
-    if(ImGui::BeginCombo("##tram_route_select", curRoute.label))
-    {
-        for(int n = 0; n < s_numTramRoutes; ++n)
-        {
-            const bool isSelected = (s_selectedTramRouteIndex == n);
-            std::string itemText = s_tramRoutes[n].label;
-            if(s_tramRoutes[n].requiresPro && !isPro)
-                itemText += " [PRO]";
-
-            if(ImGui::Selectable(itemText.c_str(), isSelected))
-            {
-                s_selectedTramRouteIndex = n;
-                const auto& sel = s_tramRoutes[n];
-                state.subMode = sel.subMode;
-                {
-                    std::scoped_lock lock(g_bridgeMutex);
-                    g_tramState.subMode = sel.subMode;
-                    g_visibleTramState.subMode = sel.subMode;
-                }
-                QueueTramCommand("submode:" + std::to_string(sel.subMode));
-                AddTramLog(std::string("[TramBot] Выбран режим: ") + sel.label);
-                SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.autoLights, state.silentChat, s_selectedTramRouteIndex);
-            }
-            if(isSelected)
-                ImGui::SetItemDefaultFocus();
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor(3);
-
-    ImGui::SameLine(0.0f, 6.0f * scale);
     const bool isRunning = state.bot;
-    if(isRunning)
-    {
-        ImGui::TextColored(ImVec4(0.35f, 0.90f, 0.50f, 1.0f), "[ В РАБОТЕ ]");
-    }
-    else
-    {
-        ImGui::TextColored(ImVec4(0.92f, 0.65f, 0.25f, 1.0f), "[ IDLE ]");
-    }
+    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(22, 23, 30, 200));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(32, 34, 46, 220));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(44, 46, 60, 255));
+    ImGui::PushStyleColor(ImGuiCol_Border, isRunning ? IM_COL32(60, 210, 100, 220) : g_Theme.AccentU32(0.85f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f * scale, 4.0f * scale));
+    ImGui::Button(isRunning ? " В РАБОТЕ " : " IDLE ");
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(4);
     ImGui::EndGroup();
 
     // Справа: Большая акцентная розовая/пурпурная кнопка
@@ -1105,15 +1122,16 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     if(ImGui::GetCursorPosX() < rightBtnX)
         ImGui::SetCursorPosX(rightBtnX);
 
-    const char* actionBtnLabel = isRunning ? "[ ⏹ Остановить ]" : "[ ⏻ Запустить бота ]";
-    const ImU32 actionBtnColor = isRunning ? IM_COL32(215, 55, 55, 255) : IM_COL32(215, 55, 125, 255);
-    const ImU32 actionBtnHover = isRunning ? IM_COL32(240, 75, 75, 255) : IM_COL32(235, 75, 145, 255);
-    const ImU32 actionBtnActive = isRunning ? IM_COL32(185, 40, 40, 255) : IM_COL32(190, 45, 110, 255);
+    const char* actionBtnLabel = isRunning ? " ⏹  Остановить бота" : " ⏻  Запустить бота";
+    const ImU32 actionBtnColor = isRunning ? IM_COL32(215, 55, 55, 255) : g_Theme.AccentU32();
+    const ImU32 actionBtnHover = isRunning ? IM_COL32(240, 75, 75, 255) : g_Theme.HoverU32();
+    const ImU32 actionBtnActive = isRunning ? IM_COL32(185, 40, 40, 255) : g_Theme.ActiveU32();
 
     ImGui::PushStyleColor(ImGuiCol_Button, actionBtnColor);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, actionBtnHover);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, actionBtnActive);
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f * scale);
     if(ImGui::Button(actionBtnLabel, ImVec2(actionBtnW, actionBtnH)))
     {
         if(isRunning)
@@ -1156,6 +1174,8 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
                 }
                 else if(sel.subMode == 2)
                 {
+                    if(sel.key && sel.key[0])
+                        QueueTramCommand("tramp_route:" + std::string(sel.key));
                     QueueTramCommand("tramp_cycles:" + std::to_string(state.trampTarget));
                     QueueTramCommand("tramp_brake:" + std::to_string(state.trampBrake));
                     QueueTramCommand(std::string("tramp_traffic:") + (state.trampTraffic ? "1" : "0"));
@@ -1168,25 +1188,42 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         }
     }
     ImGui::PopStyleVar();
-    ImGui::PopStyleColor(3);
+    ImGui::PopStyleColor(4);
 
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
     const float contentW = ImGui::GetContentRegionAvail().x;
-    const float leftColW = contentW * 0.52f - 6.0f * scale;
-    const float rightColW = contentW - leftColW - 12.0f * scale;
+    const float leftColW = std::floor((contentW - 14.0f * scale) * 0.45f);
+    const float rightColW = contentW - leftColW - 14.0f * scale;
 
-    auto BeginCard = [&](const char* id, const char* title, float height = 0.0f) {
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(16, 17, 23, 220));
-        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 16));
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f * scale);
+    auto BeginCard = [&](const char* id, void (*drawIcon)(ImDrawList*, ImVec2, float, ImU32), const char* title, const char* subtitle, float height = 0.0f) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(20, 20, 28, 255));
+        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 14));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f * scale);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f * scale, 8.0f * scale));
-        ImGui::BeginChild(id, ImVec2(-1.0f, height), ImGuiChildFlags_Borders);
+        ImGuiChildFlags childFlags = ImGuiChildFlags_Borders;
+        if(height == 0.0f)
+            childFlags |= ImGuiChildFlags_AutoResizeY;
+        ImGui::BeginChild(id, ImVec2(-1.0f, height), childFlags, ImGuiWindowFlags_NoScrollbar);
         if(title && title[0])
         {
-            ImGui::TextColored(ImVec4(0.92f, 0.92f, 0.96f, 1.0f), "%s", title);
+            ImDrawList* curDl = ImGui::GetWindowDrawList();
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            if(drawIcon)
+            {
+                drawIcon(curDl, ImVec2(p.x, p.y + 1.0f * scale), 20.0f * scale, g_Theme.AccentU32());
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 26.0f * scale);
+            }
+            ImGui::BeginGroup();
+            ImGui::TextColored(ImVec4(0.96f, 0.96f, 0.98f, 1.0f), "%s", title);
+            if(subtitle && subtitle[0])
+            {
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f * scale);
+                ImGui::TextColored(ImVec4(0.50f, 0.52f, 0.58f, 1.0f), "%s", subtitle);
+            }
+            ImGui::EndGroup();
             ImGui::Spacing();
         }
     };
@@ -1202,11 +1239,11 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.autoLights, state.silentChat, s_selectedTramRouteIndex);
     };
 
-    // Левая колонка (~52% ширины): Модульные карточки настроек
-    ImGui::BeginChild("##tram_col_left", ImVec2(leftColW, 0.0f), ImGuiChildFlags_None);
+    // Левая колонка (45% ширины): 7 карточек параметров и безопасности
+    ImGui::BeginChild("##tram_col_left", ImVec2(leftColW, 0.0f), false, ImGuiWindowFlags_NoScrollbar);
 
-    // 1. Карточка «Работа» (Основные параметры)
-    BeginCard("##card_tram_work", "Работа (Основные параметры)");
+    // 1. Карточка «Работа»
+    BeginCard("##card_tram_work", TramIcons::DrawGear, "Работа", "Основные настройки запуска и маршрута");
     if(ImGui::Checkbox("Легит: окна и «Да» мышью", &s_tramLegitMouse))
     {
         SaveCurrentSettings();
@@ -1219,47 +1256,74 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     }
     ImGui::Spacing();
 
-    const float takeBtnW = 125.0f * scale;
-    const float innerComboW = ImGui::GetContentRegionAvail().x - takeBtnW - 8.0f * scale;
+    const float availWorkW = ImGui::GetContentRegionAvail().x;
+    const float takeBtnW = 110.0f * scale;
+    const float innerComboW = availWorkW - takeBtnW - 6.0f * scale;
     ImGui::SetNextItemWidth(innerComboW);
     if(ImGui::BeginCombo("##tram_inner_route_combo", curRoute.label))
     {
+        const char* lastCat = nullptr;
         for(int i = 0; i < s_numTramRoutes; ++i)
         {
+            const auto& r = s_tramRoutes[i];
+            if(r.category != nullptr && (lastCat == nullptr || std::strcmp(lastCat, r.category) != 0))
+            {
+                lastCat = r.category;
+                std::string catHeader = std::string("-- ") + lastCat + " --";
+                ImGui::Spacing();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.60f, 0.65f, 1.0f));
+                ImGui::Selectable(catHeader.c_str(), false, ImGuiSelectableFlags_Disabled);
+                ImGui::PopStyleColor();
+                ImGui::Separator();
+            }
+
             const bool isSel = (s_selectedTramRouteIndex == i);
-            if(ImGui::Selectable(s_tramRoutes[i].label, isSel))
+            const float itemPad = (r.category != nullptr) ? (14.0f * scale) : (4.0f * scale);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + itemPad);
+            if(ImGui::Selectable(r.label, isSel))
             {
                 s_selectedTramRouteIndex = i;
                 SaveCurrentSettings();
+                if(r.subMode == 2 && r.key && r.key[0])
+                {
+                    QueueTramCommand(std::string("tramp_route:") + r.key);
+                }
             }
             if(isSel) ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
     }
-    ImGui::SameLine(0, 8.0f * scale);
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(215, 55, 125, 255));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(235, 75, 145, 255));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(190, 45, 110, 255));
+    ImGui::SameLine(0, 6.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_Button, g_Theme.AccentU32());
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, g_Theme.HoverU32());
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, g_Theme.ActiveU32());
     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
-    if(ImGui::Button("Взять маршрут", ImVec2(takeBtnW, 0.0f)))
+    if(ImGui::Button("▶ Взять маршрут", ImVec2(takeBtnW, 0.0f)))
     {
+        const auto& sel = s_tramRoutes[s_selectedTramRouteIndex];
+        if(sel.subMode == 2 && sel.key && sel.key[0])
+        {
+            QueueTramCommand(std::string("tramp_route:") + sel.key);
+        }
         QueueTramCommand("take_route");
     }
     ImGui::PopStyleColor(4);
 
     ImGui::Spacing();
-    ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Выбор в списке не отправляет команду автоматически");
+    ImGui::TextColored(ImVec4(0.50f, 0.52f, 0.58f, 1.0f), "Выбор в списке не отправляет команду автоматически");
     EndCard();
 
-    // 2. Карточка «ДТП» (Аварийные ситуации)
-    BeginCard("##card_tram_dtp", "ДТП (Аварийные ситуации)");
+    // 2. Карточка «ДТП»
+    BeginCard("##card_tram_dtp", TramIcons::DrawCrash, "ДТП", "Действия при аварийных ситуациях");
     static const char* s_dtpOptions[] = { "Встать, постоять и ехать дальше", "Остановка", "Уведомление" };
-    ImGui::SetNextItemWidth(-1.0f);
+    const float dtpCheckW = 145.0f * scale;
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - dtpCheckW - 8.0f * scale);
     if(ImGui::Combo("##tram_dtp_reaction_combo", &s_tramDtpReaction, s_dtpOptions, 3))
     {
         SaveCurrentSettings();
         QueueTramCommand(std::string("dtp_reaction:") + std::to_string(s_tramDtpReaction));
     }
+    ImGui::SameLine(0, 8.0f * scale);
     if(ImGui::Checkbox("Сирена при ДТП", &s_tramDtpSiren))
     {
         SaveCurrentSettings();
@@ -1267,23 +1331,21 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     }
     EndCard();
 
-    // 3. Карточка «Помехи» (Реакция на препятствия)
-    BeginCard("##card_tram_obstacles", "Помехи (Реакция на препятствия)");
-    const float rayHalfW = (ImGui::GetContentRegionAvail().x - 6.0f * scale) * 0.5f;
-    if(XoneButton("Auto", scale, s_tramRayMode == 0, rayHalfW, 26.0f))
+    // 3. Карточка «Помехи»
+    BeginCard("##card_tram_obstacles", TramIcons::DrawCar, "Помехи", "Реакция на препятствия");
+    static const char* s_rayOptions[] = { "Auto", "Manual" };
+    ImGui::BeginGroup();
+    ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Лучи:");
+    ImGui::SetNextItemWidth(100.0f * scale);
+    if(ImGui::Combo("##tram_ray_combo", &s_tramRayMode, s_rayOptions, 2))
     {
-        s_tramRayMode = 0;
         SaveCurrentSettings();
-        QueueTramCommand("ray_mode:0");
+        QueueTramCommand(std::string("ray_mode:") + std::to_string(s_tramRayMode));
     }
-    ImGui::SameLine(0, 6.0f * scale);
-    if(XoneButton("Manual", scale, s_tramRayMode == 1, rayHalfW, 26.0f))
-    {
-        s_tramRayMode = 1;
-        SaveCurrentSettings();
-        QueueTramCommand("ray_mode:1");
-    }
-    ImGui::Spacing();
+    ImGui::EndGroup();
+
+    ImGui::SameLine(0, 14.0f * scale);
+    ImGui::BeginGroup();
     if(ImGui::Checkbox("Видеть машины и людей", &s_tramSeeVehiclesAndPeds))
     {
         SaveCurrentSettings();
@@ -1294,10 +1356,11 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         SaveCurrentSettings();
         QueueTramCommand(std::string("siren_block_20s:") + (s_tramSirenBlock20s ? "1" : "0"));
     }
+    ImGui::EndGroup();
     EndCard();
 
-    // 4. Карточка «Тревоги» (Сигналы и защита)
-    BeginCard("##card_tram_alarms", "Тревоги (Сигналы и защита)");
+    // 4. Карточка «Тревоги»
+    BeginCard("##card_tram_alarms", TramIcons::DrawBell, "Тревоги", "Сигналы и уведомления");
     if(ImGui::BeginTable("##tram_alarms_grid", 2, ImGuiTableFlags_None))
     {
         ImGui::TableNextColumn();
@@ -1318,8 +1381,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
             SaveCurrentSettings();
             QueueTramCommand(std::string("ignore_near_chat:") + (s_tramIgnoreNearChat ? "1" : "0"));
         }
-        static bool s_tramAdminTest = false;
-        if(ImGui::Checkbox("Тест админа", &s_tramAdminTest))
+        if(ImGui::Checkbox("Тест админа", &s_tramTestAdmin))
         {
             QueueTramCommand("test_admin");
         }
@@ -1327,106 +1389,146 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     }
     EndCard();
 
-    // 5. Компактные карточки снизу (Сообщения, Прочее, Отладка)
-    const float card3W = (leftColW - 14.0f * scale) / 3.0f;
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(16, 17, 23, 220));
-    ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 16));
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f * scale);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * scale, 6.0f * scale));
-
-    if(ImGui::BeginChild("##card_tram_msg", ImVec2(card3W, 76.0f * scale), ImGuiChildFlags_Borders))
+    // 5. Карточка «Сообщения»
+    BeginCard("##card_tram_msg", TramIcons::DrawChat, "Сообщения", "Уведомления в игровой чат");
+    if(ImGui::Checkbox("Дублировать события в чат", &s_tramEchoToChat))
     {
-        ImGui::TextColored(ImVec4(0.92f, 0.92f, 0.96f, 1.0f), "Сообщения");
-        ImGui::Spacing();
-        if(ImGui::Checkbox("Дублировать в чат", &s_tramEchoToChat))
-        {
-            SaveCurrentSettings();
-            QueueTramCommand(std::string("echo_chat:") + (s_tramEchoToChat ? "1" : "0"));
-        }
+        SaveCurrentSettings();
+        QueueTramCommand(std::string("echo_chat:") + (s_tramEchoToChat ? "1" : "0"));
     }
-    ImGui::EndChild();
+    EndCard();
 
-    ImGui::SameLine(0, 6.0f * scale);
-
-    if(ImGui::BeginChild("##card_tram_misc", ImVec2(card3W, 76.0f * scale), ImGuiChildFlags_Borders))
+    // 6. Карточка «Прочее»
+    BeginCard("##card_tram_misc", TramIcons::DrawKeyboard, "Прочее", "Дополнительные настройки");
+    if(ImGui::Checkbox("Пробел: мгновенная остановка", &s_tramSpaceStop))
     {
-        ImGui::TextColored(ImVec4(0.92f, 0.92f, 0.96f, 1.0f), "Прочее");
-        ImGui::Spacing();
-        if(ImGui::Checkbox("Пробел: мгн. стоп", &s_tramSpaceStop))
-        {
-            SaveCurrentSettings();
-            QueueTramCommand(std::string("space_stop:") + (s_tramSpaceStop ? "1" : "0"));
-        }
+        SaveCurrentSettings();
+        QueueTramCommand(std::string("space_stop:") + (s_tramSpaceStop ? "1" : "0"));
     }
-    ImGui::EndChild();
+    EndCard();
 
-    ImGui::SameLine(0, 6.0f * scale);
-
-    if(ImGui::BeginChild("##card_tram_dbg", ImVec2(card3W, 76.0f * scale), ImGuiChildFlags_Borders))
+    // 7. Карточка «Отладка»
+    BeginCard("##card_tram_dbg", TramIcons::DrawWrench, "Отладка", "Инструменты для диагностики");
+    if(ImGui::Checkbox("Отладка", &state.debug))
     {
-        ImGui::TextColored(ImVec4(0.92f, 0.92f, 0.96f, 1.0f), "Отладка");
-        if(ImGui::Checkbox("Отладка", &state.debug))
-        {
-            QueueTramCommand(std::string("debug:") + (state.debug ? "1" : "0"));
-        }
-        ImGui::SameLine(0, 4.0f * scale);
-        if(ImGui::SmallButton("Сирена"))
-        {
-            QueueTramCommand("test_siren");
-        }
+        QueueTramCommand(std::string("debug:") + (state.debug ? "1" : "0"));
     }
-    ImGui::EndChild();
-    ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor(2);
+    ImGui::SameLine(0, 16.0f * scale);
+    if(ImGui::Button("Тест сирены", ImVec2(105.0f * scale, 0.0f)))
+    {
+        QueueTramCommand("test_siren");
+    }
+    ImGui::SameLine(0, 4.0f * scale);
+    ImGui::Button(" v ##dbg_dropdown", ImVec2(24.0f * scale, 0.0f));
+    EndCard();
 
     ImGui::EndChild(); // ##tram_col_left
 
-    ImGui::SameLine(0, 8.0f * scale);
+    ImGui::SameLine(0, 10.0f * scale);
 
-    // Правая колонка (~48% ширины): Мониторинг и Лог
-    ImGui::BeginChild("##tram_col_right", ImVec2(rightColW, 0.0f), ImGuiChildFlags_None);
+    // Правая колонка (55% ширины): Мониторинг и Журнал событий
+    ImGui::BeginChild("##tram_col_right", ImVec2(rightColW, 0.0f), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     // 1. Карточка «Текущее состояние»
-    BeginCard("##card_tram_status", nullptr);
+    BeginCard("##card_tram_status", TramIcons::DrawChart, "Текущее состояние", nullptr, 136.0f * scale);
     {
-        ImGui::TextColored(ImVec4(0.92f, 0.92f, 0.96f, 1.0f), "Текущее состояние");
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - 145.0f * scale);
         if(state.bot)
-            ImGui::TextColored(ImVec4(0.2f, 0.95f, 0.4f, 1.0f), "• На маршруте");
+            ImGui::TextColored(ImVec4(0.2f, 0.95f, 0.4f, 1.0f), "• В работе");
         else
-            ImGui::TextColored(ImVec4(0.6f, 0.65f, 0.75f, 1.0f), "• В режиме ожидания");
+            ImGui::TextColored(g_Theme.accentColor, "• В режиме ожидания");
+
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
         if(ImGui::BeginTable("##tram_telemetry_table", 2, ImGuiTableFlags_None))
         {
+            ImGui::TableSetupColumn("##tram_tel_c1", ImGuiTableColumnFlags_WidthStretch, 0.46f);
+            ImGui::TableSetupColumn("##tram_tel_c2", ImGuiTableColumnFlags_WidthStretch, 0.54f);
+
+            ImDrawList* curDl = ImGui::GetWindowDrawList();
+
+            // Строка 1: Маршрут | Впереди
             ImGui::TableNextColumn();
+            ImVec2 p1 = ImGui::GetCursorScreenPos();
+            TramIcons::DrawTram(curDl, ImVec2(p1.x, p1.y + 1.0f * scale), 16.0f * scale, g_Theme.AccentU32());
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 22.0f * scale);
             ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Маршрут:");
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.9f, 0.9f, 0.95f, 1.0f), "%s", curRoute.label);
-
-            ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Состояние:");
-            ImGui::SameLine();
-            ImGui::TextColored(state.bot ? ImVec4(0.2f, 0.95f, 0.4f, 1.0f) : ImVec4(0.9f, 0.5f, 0.5f, 1.0f),
-                "%s", state.bot ? (state.status.empty() ? "В движении" : state.status.c_str()) : "IDLE");
-
-            ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Работа:");
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.9f, 0.9f, 0.95f, 1.0f), "%s", state.bot ? "Активна" : "Не начата");
+            ImGui::SameLine(0, 6.0f * scale);
+            ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "%s", s_selectedTramRouteIndex == 0 ? "не выбран" : curRoute.label);
 
             ImGui::TableNextColumn();
+            ImVec2 p2 = ImGui::GetCursorScreenPos();
+            TramIcons::DrawRoad(curDl, ImVec2(p2.x, p2.y + 1.0f * scale), 16.0f * scale, g_Theme.AccentU32());
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 22.0f * scale);
             ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Впереди:");
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.3f, 0.85f, 0.95f, 1.0f), "Свободно");
+            ImGui::SameLine(0, 6.0f * scale);
+            ImGui::TextColored(ImVec4(0.85f, 0.88f, 0.95f, 1.0f), "нет данных");
 
-            ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Внимание водителя:");
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.9f, 0.9f, 0.95f, 1.0f), "0.80");
+            // Разделитель
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::Separator();
+            ImGui::TableNextColumn();
+            ImGui::Separator();
 
-            ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Заработано:");
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.98f, 0.82f, 0.3f, 1.0f), "%s р.", state.money.empty() ? "0" : state.money.c_str());
+            // Строка 2: Состояние | Внимание водителя
+            ImGui::TableNextColumn();
+            ImVec2 p3 = ImGui::GetCursorScreenPos();
+            TramIcons::DrawPulse(curDl, ImVec2(p3.x, p3.y + 1.0f * scale), 16.0f * scale, g_Theme.AccentU32());
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 22.0f * scale);
+            ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Состояние:");
+            ImGui::SameLine(0, 6.0f * scale);
+            ImGui::PushStyleColor(ImGuiCol_Border, state.bot ? IM_COL32(60, 210, 100, 220) : g_Theme.AccentU32(0.85f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f * scale);
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f * scale, 2.0f * scale));
+            const std::string stBadge = state.bot ? (!state.status.empty() ? state.status : "В РАБОТЕ") : "IDLE";
+            ImGui::Button(stBadge.c_str());
+            ImGui::PopStyleVar(3);
+            ImGui::PopStyleColor();
+
+            ImGui::TableNextColumn();
+            ImVec2 p4 = ImGui::GetCursorScreenPos();
+            TramIcons::DrawEye(curDl, ImVec2(p4.x, p4.y + 1.0f * scale), 16.0f * scale, g_Theme.AccentU32());
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 22.0f * scale);
+            ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Внимание:");
+            ImGui::SameLine(0, 6.0f * scale);
+            ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "0.80");
+
+            // Разделитель
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::Separator();
+            ImGui::TableNextColumn();
+            ImGui::Separator();
+
+            // Строка 3: Работа | Заработано
+            ImGui::TableNextColumn();
+            ImVec2 p5 = ImGui::GetCursorScreenPos();
+            TramIcons::DrawGear(curDl, ImVec2(p5.x, p5.y + 1.0f * scale), 16.0f * scale, g_Theme.AccentU32());
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 22.0f * scale);
+            ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Работа:");
+            ImGui::SameLine(0, 6.0f * scale);
+            ImGui::TextColored(ImVec4(0.85f, 0.88f, 0.95f, 1.0f), "%s", state.bot ? "движение по маршруту" : "ожидание команды");
+
+            ImGui::TableNextColumn();
+            ImVec2 p6 = ImGui::GetCursorScreenPos();
+            TramIcons::DrawCoins(curDl, ImVec2(p6.x, p6.y + 1.0f * scale), 16.0f * scale, g_Theme.AccentU32());
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 22.0f * scale);
+            if(curRoute.subMode == 2)
+            {
+                ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Циклы:");
+                ImGui::SameLine(0, 6.0f * scale);
+                ImGui::TextColored(ImVec4(0.98f, 0.82f, 0.30f, 1.0f), "%d / %d", state.trampCompleted, state.trampTarget);
+            }
+            else
+            {
+                ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Заработано:");
+                ImGui::SameLine(0, 6.0f * scale);
+                ImGui::TextColored(ImVec4(0.98f, 0.82f, 0.30f, 1.0f), "%s р.", state.money.empty() ? "0" : state.money.c_str());
+            }
 
             ImGui::EndTable();
         }
@@ -1448,28 +1550,43 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     EndCard();
 
     // 2. Карточка «Журнал событий»
-    BeginCard("##card_tram_log", nullptr, -1.0f);
+    BeginCard("##card_tram_log", TramIcons::DrawDoc, "Журнал событий", nullptr, -1.0f);
     {
-        ImGui::TextColored(ImVec4(0.92f, 0.92f, 0.96f, 1.0f), "Журнал событий");
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - 145.0f * scale);
         if(XoneButton("🗑 Очистить локально##log", scale, false, 140.0f * scale, 22.0f))
+        {
+            std::scoped_lock lock(g_bridgeMutex);
             s_tramLog.clear();
+        }
 
         ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(10, 10, 14, 200));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(12, 13, 18, 220));
         ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 12));
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f * scale);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * scale, 6.0f * scale));
 
         if(ImGui::BeginChild("##tram_event_log_scroll", ImVec2(-1.0f, -1.0f), true))
         {
-            if(s_tramLog.empty())
+            ImDrawList* logDl = ImGui::GetWindowDrawList();
+            ImVec2 logPos = ImGui::GetWindowPos();
+            ImVec2 logSz = ImGui::GetWindowSize();
+            logDl->AddRectFilled(ImVec2(logPos.x + logSz.x - 3.0f * scale, logPos.y + 4.0f * scale),
+                                 ImVec2(logPos.x + logSz.x - 1.0f * scale, logPos.y + logSz.y - 4.0f * scale),
+                                 g_Theme.AccentU32(), 2.0f * scale);
+
+            std::vector<std::string> logCopy;
             {
-                ImGui::TextColored(ImVec4(0.45f, 0.45f, 0.5f, 1.0f), "Событий пока нет...");
+                std::scoped_lock lock(g_bridgeMutex);
+                logCopy = s_tramLog;
+            }
+
+            if(logCopy.empty())
+            {
+                ImGui::TextColored(ImVec4(0.48f, 0.50f, 0.56f, 1.0f), "Событий пока нет");
             }
             else
             {
-                for(const auto& logMsg : s_tramLog)
+                for(const auto& logMsg : logCopy)
                 {
                     ImVec4 col(0.78f, 0.80f, 0.85f, 1.0f);
                     if(logMsg.find("Запуск") != std::string::npos)
@@ -1477,7 +1594,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
                     else if(logMsg.find("Остановка") != std::string::npos)
                         col = ImVec4(1.0f, 0.55f, 0.35f, 1.0f);
                     else if(logMsg.find("Выбран") != std::string::npos)
-                        col = ImVec4(0.75f, 0.60f, 1.0f, 1.0f);
+                        col = g_Theme.accentColor;
                     else if(logMsg.find("Ошибка") != std::string::npos)
                         col = ImVec4(1.0f, 0.35f, 0.35f, 1.0f);
 
@@ -1509,7 +1626,7 @@ void JbkToggle(const char* label, bool& value, const char* command)
 void JbkInt(const char* label, int& value, int minimum, int maximum,
     const char* command, float scale)
 {
-    ImGui::SetNextItemWidth(105.0f * scale);
+    ImGui::SetNextItemWidth(85.0f * scale);
     if(!ImGui::InputInt(label, &value, 1, 10))
         return;
     value = std::clamp(value, minimum, maximum);
@@ -1519,7 +1636,7 @@ void JbkInt(const char* label, int& value, int minimum, int maximum,
 void JbkFloat(const char* label, float& value, float minimum, float maximum,
     const char* command, float scale)
 {
-    ImGui::SetNextItemWidth(105.0f * scale);
+    ImGui::SetNextItemWidth(85.0f * scale);
     if(!ImGui::InputFloat(label, &value, 0.1f, 1.0f, "%.1f"))
         return;
     value = std::clamp(value, minimum, maximum);
@@ -1541,7 +1658,7 @@ void DrawJbkBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(20, 20, 20, 245));
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(40, 40, 40, 245));
     ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(65, 65, 65, 255));
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, IM_COL32(245, 245, 245, 255));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, g_Theme.AccentU32());
     ImGui::PushStyleColor(ImGuiCol_Separator, IM_COL32(80, 80, 80, 180));
     ImGui::BeginChild("##jbk_bot", size, ImGuiChildFlags_Borders);
     float segW = (ImGui::GetContentRegionAvail().x - 12.0f * scale) / 3.0f;
@@ -1552,8 +1669,21 @@ void DrawJbkBot(ImVec2 position, ImVec2 size, float scale)
     if(XoneButton("Лесоруб", scale, g_factoryMode == 2, segW, 26.0f)) g_factoryMode = 2;
     ImGui::Spacing();
 
-    if(XoneButton(state.bot ? "ОСТАНОВИТЬ БОТА (ЖБК)" : "ЗАПУСТИТЬ БОТА (ЖБК)", scale, true, -1.0f, 38.0f))
-        QueueJbkCommand(state.bot ? "bot:0" : "bot:1");
+    const bool isRunning = state.bot;
+    const char* actionBtnLabel = isRunning ? " ⏹  ОСТАНОВИТЬ БОТА (ЖБК)" : " ⏻  ЗАПУСТИТЬ БОТА (ЖБК)";
+    const ImU32 actionBtnColor = isRunning ? IM_COL32(215, 55, 55, 255) : g_Theme.AccentU32();
+    const ImU32 actionBtnHover = isRunning ? IM_COL32(240, 75, 75, 255) : g_Theme.HoverU32();
+    const ImU32 actionBtnActive = isRunning ? IM_COL32(185, 40, 40, 255) : g_Theme.ActiveU32();
+
+    ImGui::PushStyleColor(ImGuiCol_Button, actionBtnColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, actionBtnHover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, actionBtnActive);
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f * scale);
+    if(ImGui::Button(actionBtnLabel, ImVec2(-1.0f, 38.0f * scale)))
+        QueueJbkCommand(isRunning ? "bot:0" : "bot:1");
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(4);
     ImGui::Spacing();
 
     ImGui::TextColored(state.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(1.0f, 0.35f, 0.25f, 1.0f),
@@ -1631,7 +1761,7 @@ void DrawTobaccoBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(20, 20, 20, 245));
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(40, 40, 40, 245));
     ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(65, 65, 65, 255));
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, IM_COL32(245, 245, 245, 255));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, g_Theme.AccentU32());
     ImGui::PushStyleColor(ImGuiCol_Separator, IM_COL32(80, 80, 80, 180));
     ImGui::BeginChild("##tobacco_bot", size, ImGuiChildFlags_Borders);
     float segW = (ImGui::GetContentRegionAvail().x - 12.0f * scale) / 3.0f;
@@ -1642,8 +1772,21 @@ void DrawTobaccoBot(ImVec2 position, ImVec2 size, float scale)
     if(XoneButton("Лесоруб", scale, g_factoryMode == 2, segW, 26.0f)) g_factoryMode = 2;
     ImGui::Spacing();
 
-    if(XoneButton(state.bot ? "ОСТАНОВИТЬ БОТА (Табачка)" : "ЗАПУСТИТЬ БОТА (Табачка)", scale, true, -1.0f, 38.0f))
-        QueueTobaccoCommand(state.bot ? "bot:0" : "bot:1");
+    const bool isRunning = state.bot;
+    const char* actionBtnLabel = isRunning ? " ⏹  ОСТАНОВИТЬ БОТА (Табачка)" : " ⏻  ЗАПУСТИТЬ БОТА (Табачка)";
+    const ImU32 actionBtnColor = isRunning ? IM_COL32(215, 55, 55, 255) : g_Theme.AccentU32();
+    const ImU32 actionBtnHover = isRunning ? IM_COL32(240, 75, 75, 255) : g_Theme.HoverU32();
+    const ImU32 actionBtnActive = isRunning ? IM_COL32(185, 40, 40, 255) : g_Theme.ActiveU32();
+
+    ImGui::PushStyleColor(ImGuiCol_Button, actionBtnColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, actionBtnHover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, actionBtnActive);
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f * scale);
+    if(ImGui::Button(actionBtnLabel, ImVec2(-1.0f, 38.0f * scale)))
+        QueueTobaccoCommand(isRunning ? "bot:0" : "bot:1");
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(4);
     ImGui::Spacing();
 
     ImGui::TextColored(state.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(0.8f, 0.8f, 0.8f, 1.0f),
@@ -1743,7 +1886,7 @@ void DrawWoodBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(20, 20, 20, 245));
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(40, 40, 40, 245));
     ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(65, 65, 65, 255));
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, IM_COL32(245, 245, 245, 255));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, g_Theme.AccentU32());
     ImGui::PushStyleColor(ImGuiCol_Separator, IM_COL32(80, 80, 80, 180));
     ImGui::BeginChild("##lesorub_bot", size, ImGuiChildFlags_Borders);
     float segW = (ImGui::GetContentRegionAvail().x - 12.0f * scale) / 3.0f;
@@ -1754,7 +1897,17 @@ void DrawWoodBot(ImVec2 position, ImVec2 size, float scale)
     if(XoneButton("Лесоруб", scale, g_factoryMode == 2, segW, 26.0f)) g_factoryMode = 2;
     ImGui::Spacing();
 
-    const char* btnLabel = state.enabled ? "Остановить Лесоруба" : "Запустить Лесоруба";
+    const bool isRunning = state.enabled;
+    const char* btnLabel = isRunning ? " ⏹  Остановить Лесоруба" : " ⏻  Запустить Лесоруба";
+    const ImU32 actionBtnColor = isRunning ? IM_COL32(215, 55, 55, 255) : g_Theme.AccentU32();
+    const ImU32 actionBtnHover = isRunning ? IM_COL32(240, 75, 75, 255) : g_Theme.HoverU32();
+    const ImU32 actionBtnActive = isRunning ? IM_COL32(185, 40, 40, 255) : g_Theme.ActiveU32();
+
+    ImGui::PushStyleColor(ImGuiCol_Button, actionBtnColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, actionBtnHover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, actionBtnActive);
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f * scale);
     if(ImGui::Button(btnLabel, ImVec2(-1.0f, 40.0f * scale)))
     {
         state.enabled = !state.enabled;
@@ -1766,6 +1919,8 @@ void DrawWoodBot(ImVec2 position, ImVec2 size, float scale)
         }
         QueueLesorubCommand(state.enabled ? "bot:1" : "bot:0");
     }
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(4);
     ImGui::Spacing();
 
     ImGui::TextColored(state.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(0.8f, 0.8f, 0.8f, 1.0f),
@@ -2619,6 +2774,31 @@ void DrawMiscTab(ImVec2 position, ImVec2 size, float scale)
             "а также предотвращает перегрев видеокарты.");
         ImGui::EndChild();
         ImGui::PopStyleColor();
+
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, 1.0f), "ОФОРМЛЕНИЕ И ТЕМА");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, c.plashkaBg);
+        ImGui::BeginChild("##box_theme", ImVec2(colW, 85.0f * scale), ImGuiChildFlags_Borders);
+        ImGui::TextUnformatted("Акцентный цвет:");
+        ImGui::SameLine();
+        if (ImGui::ColorEdit3("##custom_accent", (float*)&g_Theme.accentColor, 
+            ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel)) 
+        {
+            g_Theme.UpdateDerived();
+            SaveThemeToConfig();
+        }
+        ImGui::SameLine(0, 8.0f * scale);
+        if (XoneButton("По умолчанию##reset_accent", scale, false, 115.0f * scale, 22.0f))
+        {
+            ResetThemeSettings();
+        }
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.6f, 0.65f, 0.75f, 1.0f), "Мгновенно обновляет цвет кнопок, чекбоксов и индикаторов.");
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
     }
     ImGui::EndGroup();
 
@@ -2629,10 +2809,11 @@ void DrawMiscTab(ImVec2 position, ImVec2 size, float scale)
 
 void RenderMenu()
 {
+    LoadThemeSettings();
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = true;
-    constexpr float BaseWidth = 740.0f;
-    constexpr float BaseHeight = 470.0f;
+    constexpr float BaseWidth = 790.0f;
+    constexpr float BaseHeight = 485.0f;
     const float scale = 1.0f;
     const ImVec2 size(BaseWidth * scale, BaseHeight * scale);
     const ImVec2 centered((io.DisplaySize.x - size.x) * 0.5f,
@@ -2690,10 +2871,11 @@ void RenderMenu()
         {"##tab_factory", "Пешеходы", 4, false},
         {"##tab_pilot", "Pilot", 5, false},
         {"##tab_plow", "Поливалка (Авто)", 6, false},
-        {"##tab_admin", "Админы", 7, true}
+        {"##tab_admin", "Админы", 7, true},
+        {"##tab_settings", "Настройки", 9, false}
     };
     const bool isPro = IsProLicense();
-    const int tabCount = 8;
+    const int tabCount = 9;
     for(int i = 0; i < tabCount; ++i)
     {
         ImVec2 tabPos(origin.x + 8.0f * scale, origin.y + (54.0f + i * 33.0f) * scale);
@@ -2839,6 +3021,10 @@ void RenderMenu()
     else if(g_activeTab == 8)
     {
         DrawLicenseTab(contentPosition, contentSize, scale);
+    }
+    else if(g_activeTab == 9)
+    {
+        DrawMiscTab(contentPosition, contentSize, scale);
     }
     ImGui::PopFont();
 
@@ -3391,6 +3577,11 @@ void GuiQueueTramAdminCaption(std::string caption)
     if(g_tramCommands.size() >= 64)
         g_tramCommands.pop_front();
     g_tramCommands.push_back("admin:" + std::move(caption));
+}
+
+void GuiAddTramLog(std::string_view msg)
+{
+    AddTramLog(std::string(msg));
 }
 
 namespace

@@ -2,6 +2,7 @@
 
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
+#include "theme.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -96,11 +97,11 @@ inline XoneThemeColors GetCurrentTheme()
     c.plashkaBorderHover = IM_COL32(255, 255, 255, 45);
     c.textPrimary = IM_COL32(245, 245, 250, 255);
     c.textMuted = IM_COL32(150, 155, 170, 255);
-    c.accent = IM_COL32(165, 110, 255, 255);
+    c.accent = g_Theme.AccentU32();
     c.buttonBg = IM_COL32(32, 34, 46, 170);
     c.buttonHover = IM_COL32(48, 52, 70, 210);
     c.buttonActive = IM_COL32(70, 75, 105, 255);
-    c.toggleActive = IM_COL32(165, 110, 255, 255);
+    c.toggleActive = g_Theme.AccentU32();
     return c;
 }
 
@@ -251,10 +252,10 @@ inline bool XonePlashkaButton(const char* label, const char* btnText, float scal
     float btnH = 28.0f * scale;
     ImGui::SetCursorScreenPos(ImVec2(pos.x + w - btnW - 12.0f * scale, pos.y + (h - btnH) * 0.5f));
 
-    ImGui::PushStyleColor(ImGuiCol_Button, primary ? IM_COL32(235, 235, 245, 255) : c.buttonBg);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, primary ? IM_COL32(255, 255, 255, 255) : c.buttonHover);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, primary ? IM_COL32(200, 200, 210, 255) : c.buttonActive);
-    ImGui::PushStyleColor(ImGuiCol_Text, primary ? IM_COL32(15, 15, 20, 255) : c.textPrimary);
+    ImGui::PushStyleColor(ImGuiCol_Button, primary ? g_Theme.AccentU32() : c.buttonBg);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, primary ? g_Theme.HoverU32() : c.buttonHover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, primary ? g_Theme.ActiveU32() : c.buttonActive);
+    ImGui::PushStyleColor(ImGuiCol_Text, primary ? IM_COL32(255, 255, 255, 255) : c.textPrimary);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f * scale);
 
     std::string btnId = std::string(btnText) + "##" + label;
@@ -274,10 +275,10 @@ inline bool XoneButton(const char* label, float scale, bool primary = false, flo
     float h = height * scale;
     XoneThemeColors c = GetCurrentTheme();
 
-    ImGui::PushStyleColor(ImGuiCol_Button, primary ? IM_COL32(235, 235, 245, 255) : c.buttonBg);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, primary ? IM_COL32(255, 255, 255, 255) : c.buttonHover);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, primary ? IM_COL32(190, 190, 205, 255) : c.buttonActive);
-    ImGui::PushStyleColor(ImGuiCol_Text, primary ? IM_COL32(14, 15, 20, 255) : c.textPrimary);
+    ImGui::PushStyleColor(ImGuiCol_Button, primary ? g_Theme.AccentU32() : c.buttonBg);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, primary ? g_Theme.HoverU32() : c.buttonHover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, primary ? g_Theme.ActiveU32() : c.buttonActive);
+    ImGui::PushStyleColor(ImGuiCol_Text, primary ? IM_COL32(255, 255, 255, 255) : c.textPrimary);
     ImGui::PushStyleColor(ImGuiCol_Border, c.plashkaBorder);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
