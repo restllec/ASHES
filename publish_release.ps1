@@ -1,7 +1,7 @@
 param(
-    [string]$Version = "1.7.0",
-    [string]$Title = "ASHES v$Version (Unified Tram Routes & Loader Update)",
-    [string]$Notes = "Release v$($Version) - unified tram routes, loader cleanup, lesorub module, and misc ingame settings."
+    [string]$Version = "1.8.0",
+    [string]$Title = "ASHES v$Version (PolivTram Bot & UI Redesign)",
+    [string]$Notes = "Release v$($Version) - added PolivTram bot, dynamic theming system, redesigned TramBot cards, and flight telemetry UI updates."
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,6 +16,10 @@ $projectArchive = "$outputDir\ASHES.rar"
 
 Write-Host "=== [1/4] Сборка проекта (MSBuild Release x86) ===" -ForegroundColor Cyan
 & $msbuild "$PSScriptRoot\DarkFlame.sln" /p:Configuration=Release /p:Platform=x86 /v:m
+
+if (Test-Path "$PSScriptRoot\PolivTram.lua") {
+    Copy-Item "$PSScriptRoot\PolivTram.lua" "$outputDir\PolivTram.lua" -Force
+}
 
 Write-Host "=== [2/4] Генерация манифеста version.json ===" -ForegroundColor Cyan
 & "$PSScriptRoot\generate_version_manifest.ps1" -Version $Version -Repo $repo -OutputDir $outputDir
@@ -57,10 +61,6 @@ $assets = @(
     "$outputDir\PlowMarks.txt",
     $desktopArchive
 )
-
-if (Test-Path "$outputDir\WinterCat.exe") {
-    $assets += "$outputDir\WinterCat.exe"
-}
 
 & $gh release create "v$Version" $assets --title "$Title" --notes "$Notes"
 Write-Host "Релиз v$Version успешно опубликован на GitHub!" -ForegroundColor Green

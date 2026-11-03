@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "1.7.0",
+    [string]$Version = "1.8.0",
     [string]$Repo = "restllec/ASHES",
     [string]$OutputDir = "$PSScriptRoot\bin\Release\x86"
 )
@@ -19,7 +19,6 @@ $filesToInclude = @(
 )
 
 $optionalModules = @(
-    "WinterCat.exe",
     "plugin.dll",
     "extension.dll"
 )
