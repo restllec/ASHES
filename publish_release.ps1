@@ -18,7 +18,7 @@ $updaterHeader = Join-Path $PSScriptRoot "Loader\updater.h"
 if (Test-Path $updaterHeader) {
     $hdrContent = Get-Content $updaterHeader -Raw
     if ($hdrContent -match 'CURRENT_LOADER_VERSION\s*=\s*"([^"]+)"' -and $Matches[1] -ne $Version) {
-        Write-Host "Синхронизация версии в updater.h: $($Matches[1]) -> $Version" -ForegroundColor Yellow
+        Write-Host "Sync version in updater.h: $($Matches[1]) -> $Version" -ForegroundColor Yellow
         $hdrContent = $hdrContent -replace 'CURRENT_LOADER_VERSION\s*=\s*"[^"]+"', "CURRENT_LOADER_VERSION = `"$Version`""
         Set-Content -Path $updaterHeader -Value $hdrContent -Encoding UTF8
     }
@@ -72,5 +72,12 @@ $assets = @(
     $desktopArchive
 )
 
-& $gh release create "v$Version" $assets --title "$Title" --notes "$Notes"
-Write-Host "Релиз v$Version успешно опубликован на GitHub!" -ForegroundColor Green
+$null = & $gh release view "v$Version" --repo $repo 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Updating release assets on GitHub..." -ForegroundColor Yellow
+    & $gh release upload "v$Version" $assets --repo $repo --clobber
+    Write-Host "Release assets updated on GitHub!" -ForegroundColor Green
+} else {
+    & $gh release create "v$Version" $assets --repo $repo --title "$Title" --notes "$Notes"
+    Write-Host "Release created on GitHub!" -ForegroundColor Green
+}
