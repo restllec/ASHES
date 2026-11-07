@@ -301,10 +301,10 @@ void ExecuteSelfUpdate(const std::wstring& directory, const std::wstring& update
     wchar_t currentExe[MAX_PATH]{};
     GetModuleFileNameW(nullptr, currentExe, MAX_PATH);
 
-    // cmd.exe /c timeout /t 1 /nobreak > nul & del /f /q "current" & move /y "update" "current" & start "" "current"
-    std::wstring cmd = L"cmd.exe /c timeout /t 1 /nobreak > nul & del /f /q \"" + std::wstring(currentExe) +
-        L"\" & move /y \"" + updateExePath + L"\" \"" + std::wstring(currentExe) +
-        L"\" & start \"\" \"" + std::wstring(currentExe) + L"\"";
+    // cmd.exe /c timeout /t 2 /nobreak > nul & move /y "update" "current" & start "" "current" --just-updated
+    std::wstring cmd = L"cmd.exe /c timeout /t 2 /nobreak > nul & move /y \"" + updateExePath +
+        L"\" \"" + std::wstring(currentExe) +
+        L"\" & start \"\" \"" + std::wstring(currentExe) + L"\" --just-updated";
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);
@@ -353,17 +353,26 @@ bool CheckAndPerformUpdates(const std::wstring& directory, const LogCallback& lo
     // 1. Проверка самообновления Ashes.exe
     if (!manifest.loaderVersion.empty() && IsNewerVersion(manifest.loaderVersion, CURRENT_LOADER_VERSION))
     {
-        log(L"[updater] Найдена новая версия лоадера: v" + Utf8ToWide(manifest.loaderVersion));
-        std::wstring updateExe = directory + L"\\Ashes_update.exe";
-        if (HttpDownloadFile(manifest.loaderUrl, updateExe))
+        const wchar_t* cmdLine = GetCommandLineW();
+        if (cmdLine && wcsstr(cmdLine, L"--just-updated"))
         {
-            log(L"[updater] Лоадер загружен, выполняется перезапуск...");
-            ExecuteSelfUpdate(directory, updateExe);
-            return true;
+            log(L"[updater] Предупреждение: лоадер перезапущен, но версия осталась v" +
+                Utf8ToWide(CURRENT_LOADER_VERSION) + L". Пропуск повторного обновления.");
         }
         else
         {
-            log(L"[updater] Ошибка скачивания Ashes_update.exe");
+            log(L"[updater] Найдена новая версия лоадера: v" + Utf8ToWide(manifest.loaderVersion));
+            std::wstring updateExe = directory + L"\\Ashes_update.exe";
+            if (HttpDownloadFile(manifest.loaderUrl, updateExe))
+            {
+                log(L"[updater] Лоадер загружен, выполняется перезапуск...");
+                ExecuteSelfUpdate(directory, updateExe);
+                return true;
+            }
+            else
+            {
+                log(L"[updater] Ошибка скачивания Ashes_update.exe");
+            }
         }
     }
 

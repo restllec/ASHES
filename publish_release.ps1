@@ -14,6 +14,16 @@ $rar = "C:\Program Files\WinRAR\Rar.exe"
 $desktopArchive = "C:\Users\restleSS\Desktop\ASHES.rar"
 $projectArchive = "$outputDir\ASHES.rar"
 
+$updaterHeader = Join-Path $PSScriptRoot "Loader\updater.h"
+if (Test-Path $updaterHeader) {
+    $hdrContent = Get-Content $updaterHeader -Raw
+    if ($hdrContent -match 'CURRENT_LOADER_VERSION\s*=\s*"([^"]+)"' -and $Matches[1] -ne $Version) {
+        Write-Host "Синхронизация версии в updater.h: $($Matches[1]) -> $Version" -ForegroundColor Yellow
+        $hdrContent = $hdrContent -replace 'CURRENT_LOADER_VERSION\s*=\s*"[^"]+"', "CURRENT_LOADER_VERSION = `"$Version`""
+        Set-Content -Path $updaterHeader -Value $hdrContent -Encoding UTF8
+    }
+}
+
 Write-Host "=== [1/4] Сборка проекта (MSBuild Release x86) ===" -ForegroundColor Cyan
 & $msbuild "$PSScriptRoot\DarkFlame.sln" /p:Configuration=Release /p:Platform=x86 /v:m
 
