@@ -1,7 +1,7 @@
 ﻿param(
-    [string]$Version = "1.8.1",
-    [string]$Title = "ASHES v$Version (Auto-Taxi Catcher, HWID Profiles & TaxiHelper)",
-    [string]$Notes = "Release v$($Version) - added Auto-Taxi Catcher with event interception, TaxiHelper coordinate clicker bind on key '2', HWID / Serial profiles switcher in Loader, and sound alert toggle fixes.",
+    [string]$Version = "1.8.2",
+    [string]$Title = "ASHES v$Version (Taxi Profile Startup Toggles Fix)",
+    [string]$Notes = "Release v$($Version) - all Taxi profile toggles and coordinate clicker start disabled by default to prevent triggering hotkeys during login, plus bugfixes.",
     [switch]$SkipBuild
 )
 

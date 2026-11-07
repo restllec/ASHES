@@ -237,7 +237,7 @@ struct TaxiState
     bool enabled{false};
     int maxDistance{1500};
     int pollInterval{500};
-    bool soundAlert{true};
+    bool soundAlert{false};
     bool shiftActive{false};
     bool hasOrder{false};
     std::string ordersCount{"0"};
@@ -251,7 +251,7 @@ bool g_taxiDirty{true};
 
 struct TaxiClickerConfig
 {
-    bool enabled{true};
+    bool enabled{false};
     std::atomic_bool active{false};
     int loc1X{814};
     int loc1Y{405};
@@ -260,7 +260,7 @@ struct TaxiClickerConfig
     int delayMs{70};
     int hotkey{'2'};
     bool autoStopOnOrder{true};
-    std::string status{"Ожидание активации (клавиша '2')"};
+    std::string status{"Кликер отключен"};
 };
 TaxiClickerConfig g_taxiClicker;
 char g_targetResource[128]{"province_ac"};
@@ -2291,10 +2291,12 @@ static void LoadTaxiSettings()
     static bool s_loaded = false;
     if(s_loaded) return;
     std::wstring ini = GetSettingsIniPath();
-    g_taxiState.soundAlert = GetPrivateProfileIntW(L"Taxi", L"SoundAlert", 1, ini.c_str()) != 0;
+    g_taxiState.soundAlert = GetPrivateProfileIntW(L"Taxi", L"SoundAlert", 0, ini.c_str()) != 0;
+    g_taxiState.enabled = false;
     g_taxiState.maxDistance = GetPrivateProfileIntW(L"Taxi", L"MaxDistance", 1500, ini.c_str());
     g_taxiState.pollInterval = GetPrivateProfileIntW(L"Taxi", L"PollInterval", 500, ini.c_str());
     g_visibleTaxiState.soundAlert = g_taxiState.soundAlert;
+    g_visibleTaxiState.enabled = false;
     g_visibleTaxiState.maxDistance = g_taxiState.maxDistance;
     g_visibleTaxiState.pollInterval = g_taxiState.pollInterval;
     s_loaded = true;
@@ -2313,7 +2315,9 @@ static void LoadTaxiClickerSettings()
     static bool s_loaded = false;
     if(s_loaded) return;
     std::wstring ini = GetSettingsIniPath();
-    g_taxiClicker.enabled = GetPrivateProfileIntW(L"TaxiClicker", L"Enabled", 1, ini.c_str()) != 0;
+    g_taxiClicker.enabled = false;
+    g_taxiClicker.active.store(false);
+    g_taxiClicker.status = "Кликер отключен";
     g_taxiClicker.loc1X = GetPrivateProfileIntW(L"TaxiClicker", L"Loc1X", 814, ini.c_str());
     g_taxiClicker.loc1Y = GetPrivateProfileIntW(L"TaxiClicker", L"Loc1Y", 405, ini.c_str());
     g_taxiClicker.loc2X = GetPrivateProfileIntW(L"TaxiClicker", L"Loc2X", 808, ini.c_str());
