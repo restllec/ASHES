@@ -2316,6 +2316,79 @@ static void SaveTaxiClickerSettings()
 }
 
 static std::atomic_bool s_taxiClickerThreadRunning{false};
+static int s_captureTarget = 0;
+static std::chrono::steady_clock::time_point s_captureStartTime{};
+
+static void SendSimulatedClick(HWND hwnd, int clientX, int clientY)
+{
+    POINT screenPt{clientX, clientY};
+    if(hwnd)
+        ClientToScreen(hwnd, &screenPt);
+
+    const int vLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int vTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int vWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int vHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    if(vWidth <= 1 || vHeight <= 1)
+        return;
+
+    const LONG normX = static_cast<LONG>(((double)(screenPt.x - vLeft) * 65535.0) / (double)(vWidth - 1) + 0.5);
+    const LONG normY = static_cast<LONG>(((double)(screenPt.y - vTop) * 65535.0) / (double)(vHeight - 1) + 0.5);
+    const DWORD flagsMove = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+    const DWORD flagsDown = MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+    const DWORD flagsUp = MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+
+    // 1. Физическое перемещение курсора в Windows, DirectInput и Raw Input
+    INPUT moveInput{};
+    moveInput.type = INPUT_MOUSE;
+    moveInput.mi.dx = normX;
+    moveInput.mi.dy = normY;
+    moveInput.mi.dwFlags = flagsMove;
+    SendInput(1, &moveInput, sizeof(INPUT));
+    mouse_event(flagsMove, normX, normY, 0, 0);
+
+    if(g_setCursorPos)
+        g_setCursorPos(screenPt.x, screenPt.y);
+    else
+        SetCursorPos(screenPt.x, screenPt.y);
+
+    if(hwnd)
+    {
+        PostMessageA(hwnd, WM_MOUSEMOVE, 0, MAKELPARAM(clientX, clientY));
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+
+    // 2. Нажатие левой кнопки мыши
+    INPUT downInput{};
+    downInput.type = INPUT_MOUSE;
+    downInput.mi.dx = normX;
+    downInput.mi.dy = normY;
+    downInput.mi.dwFlags = flagsDown;
+    SendInput(1, &downInput, sizeof(INPUT));
+    mouse_event(flagsDown, normX, normY, 0, 0);
+
+    if(hwnd)
+    {
+        PostMessageA(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(clientX, clientY));
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(18));
+
+    // 3. Отпускание левой кнопки мыши
+    INPUT upInput{};
+    upInput.type = INPUT_MOUSE;
+    upInput.mi.dx = normX;
+    upInput.mi.dy = normY;
+    upInput.mi.dwFlags = flagsUp;
+    SendInput(1, &upInput, sizeof(INPUT));
+    mouse_event(flagsUp, normX, normY, 0, 0);
+
+    if(hwnd)
+    {
+        PostMessageA(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(clientX, clientY));
+    }
+}
 
 static void TaxiClickerWorker()
 {
@@ -2335,12 +2408,8 @@ static void TaxiClickerWorker()
             HWND hwnd = InputUtil::GameWindow();
             if(hwnd && GetForegroundWindow() == hwnd && !g_visible.load())
             {
-                POINT p1{g_taxiClicker.loc1X, g_taxiClicker.loc1Y};
-                ClientToScreen(hwnd, &p1);
-                SetCursorPos(p1.x, p1.y);
-                mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-                std::this_thread::sleep_for(std::chrono::milliseconds(12));
-                mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+                // Клик по Локации 1
+                SendSimulatedClick(hwnd, g_taxiClicker.loc1X, g_taxiClicker.loc1Y);
 
                 std::this_thread::sleep_for(std::chrono::milliseconds(std::max(20, g_taxiClicker.delayMs)));
 
@@ -2354,12 +2423,8 @@ static void TaxiClickerWorker()
                     continue;
                 }
 
-                POINT p2{g_taxiClicker.loc2X, g_taxiClicker.loc2Y};
-                ClientToScreen(hwnd, &p2);
-                SetCursorPos(p2.x, p2.y);
-                mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-                std::this_thread::sleep_for(std::chrono::milliseconds(12));
-                mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+                // Клик по Локации 2
+                SendSimulatedClick(hwnd, g_taxiClicker.loc2X, g_taxiClicker.loc2Y);
 
                 std::this_thread::sleep_for(std::chrono::milliseconds(std::max(20, g_taxiClicker.delayMs)));
             }
@@ -2416,6 +2481,33 @@ static void PulseTaxiClicker()
         {
             g_taxiClicker.active.store(false);
             g_taxiClicker.status = "Заказ пойман! Кликер отключен";
+        }
+    }
+
+    if(s_captureTarget > 0)
+    {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - s_captureStartTime).count();
+        if(elapsed >= 3000)
+        {
+            POINT pt;
+            if(GetCursorPos(&pt))
+            {
+                HWND hwnd = InputUtil::GameWindow();
+                if(hwnd) ScreenToClient(hwnd, &pt);
+                if(s_captureTarget == 1)
+                {
+                    g_taxiClicker.loc1X = pt.x;
+                    g_taxiClicker.loc1Y = pt.y;
+                }
+                else if(s_captureTarget == 2)
+                {
+                    g_taxiClicker.loc2X = pt.x;
+                    g_taxiClicker.loc2Y = pt.y;
+                }
+                SaveTaxiClickerSettings();
+                PlayTramAlertSignal();
+            }
+            s_captureTarget = 0;
         }
     }
 }
@@ -2563,35 +2655,49 @@ void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale)
     ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.95f, 1.0f), "НАСТРОЙКА КООРДИНАТ ТАКСИ БИНДА");
     ImGui::Spacing();
 
+    char loc1Btn[32] = "Выбрать лок. 1";
+    if(s_captureTarget == 1)
+    {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - s_captureStartTime).count();
+        int remSec = (int)std::max(0LL, 3LL - (elapsed / 1000));
+        std::snprintf(loc1Btn, sizeof(loc1Btn), "Наведите (%dс)...", remSec > 0 ? remSec : 1);
+    }
     char loc1Str[64];
     std::snprintf(loc1Str, sizeof(loc1Str), "Локация 1: X = %d, Y = %d", g_taxiClicker.loc1X, g_taxiClicker.loc1Y);
-    if(XonePlashkaButton(loc1Str, "Выбрать лок. 1", scale, false))
+    if(XonePlashkaButton(loc1Str, loc1Btn, scale, s_captureTarget == 1))
     {
-        POINT pt;
-        if(GetCursorPos(&pt))
-        {
-            HWND hwnd = InputUtil::GameWindow();
-            if(hwnd) ScreenToClient(hwnd, &pt);
-            g_taxiClicker.loc1X = pt.x;
-            g_taxiClicker.loc1Y = pt.y;
-            SaveTaxiClickerSettings();
-        }
+        s_captureTarget = 1;
+        s_captureStartTime = std::chrono::steady_clock::now();
     }
 
+    char loc2Btn[32] = "Выбрать лок. 2";
+    if(s_captureTarget == 2)
+    {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - s_captureStartTime).count();
+        int remSec = (int)std::max(0LL, 3LL - (elapsed / 1000));
+        std::snprintf(loc2Btn, sizeof(loc2Btn), "Наведите (%dс)...", remSec > 0 ? remSec : 1);
+    }
     char loc2Str[64];
     std::snprintf(loc2Str, sizeof(loc2Str), "Локация 2: X = %d, Y = %d", g_taxiClicker.loc2X, g_taxiClicker.loc2Y);
-    if(XonePlashkaButton(loc2Str, "Выбрать лок. 2", scale, false))
+    if(XonePlashkaButton(loc2Str, loc2Btn, scale, s_captureTarget == 2))
     {
-        POINT pt;
-        if(GetCursorPos(&pt))
-        {
-            HWND hwnd = InputUtil::GameWindow();
-            if(hwnd) ScreenToClient(hwnd, &pt);
-            g_taxiClicker.loc2X = pt.x;
-            g_taxiClicker.loc2Y = pt.y;
-            SaveTaxiClickerSettings();
-        }
+        s_captureTarget = 2;
+        s_captureStartTime = std::chrono::steady_clock::now();
     }
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Ручная подстройка (Лок 1: X/Y  |  Лок 2: X/Y):");
+    ImGui::SetNextItemWidth(62.0f * scale);
+    if(ImGui::InputInt("##l1_x", &g_taxiClicker.loc1X, 0, 0)) SaveTaxiClickerSettings();
+    ImGui::SameLine(0, 4.0f * scale);
+    ImGui::SetNextItemWidth(62.0f * scale);
+    if(ImGui::InputInt("##l1_y", &g_taxiClicker.loc1Y, 0, 0)) SaveTaxiClickerSettings();
+    ImGui::SameLine(0, 10.0f * scale);
+    ImGui::SetNextItemWidth(62.0f * scale);
+    if(ImGui::InputInt("##l2_x", &g_taxiClicker.loc2X, 0, 0)) SaveTaxiClickerSettings();
+    ImGui::SameLine(0, 4.0f * scale);
+    ImGui::SetNextItemWidth(62.0f * scale);
+    if(ImGui::InputInt("##l2_y", &g_taxiClicker.loc2Y, 0, 0)) SaveTaxiClickerSettings();
 
     if(XonePlashkaInt("Задержка клика (мс)", &g_taxiClicker.delayMs, 20, 500, scale))
     {
