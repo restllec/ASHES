@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <string>
 #include <vector>
@@ -6,7 +6,7 @@
 
 namespace AshesUpdater
 {
-inline constexpr const char* CURRENT_LOADER_VERSION = "1.8.0";
+inline constexpr const char* CURRENT_LOADER_VERSION = "1.8.1";
 inline constexpr const wchar_t* DEFAULT_MANIFEST_URL =
     L"https://github.com/restllec/ASHES/releases/latest/download/version.json";
 
@@ -28,6 +28,7 @@ struct UpdateManifest
     bool valid = false;
 };
 
-// Выполняет проверку и обновление. Возвращает true, если запущен self-update процесс (тогда вызывающий должен завершиться).
+// Р’С‹РїРѕР»РЅСЏРµС‚ РїСЂРѕРІРµСЂРєСѓ Рё РѕР±РЅРѕРІР»РµРЅРёРµ. Р’РѕР·РІСЂР°С‰Р°РµС‚ true, РµСЃР»Рё Р·Р°РїСѓС‰РµРЅ self-update РїСЂРѕС†РµСЃСЃ (С‚РѕРіРґР° РІС‹Р·С‹РІР°СЋС‰РёР№ РґРѕР»Р¶РµРЅ Р·Р°РІРµСЂС€РёС‚СЊСЃСЏ).
 bool CheckAndPerformUpdates(const std::wstring& directory, const LogCallback& log);
 }
+

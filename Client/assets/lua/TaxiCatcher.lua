@@ -144,6 +144,40 @@ for _, ev in ipairs(knownOrderEvents) do
     end
 end
 
+-- Перехват серверного подтверждения взятия заказа
+local orderCaughtEvents = {
+    "Taxi:onOrderAccepted",
+    "Taxi:orderAccepted",
+    "Taxi:onTakeOrder",
+    "Taxi:takeOrder",
+    "Taxi:setClient",
+    "Taxi:onSetClient",
+    "Taxi:onClientAccepted",
+    "Taxi:onOrderCheck",
+    "Taxi:onCheckOrder",
+    "Taxi:startOrder",
+    "Taxi:onStartOrder",
+    "Taxi:acceptOrder",
+    "Taxi:onAcceptOrder"
+}
+
+for _, ev in ipairs(orderCaughtEvents) do
+    if addEvent and addEventHandler then
+        addEvent(ev, true)
+        addEventHandler(ev, getRootElement(), function(...)
+            TAXI.hasActiveOrder = true
+            TAXI.status = "Заказ зафиксирован (сервер)"
+            if dfTaxiUpdate then
+                dfTaxiUpdate("has_order", "1")
+                dfTaxiUpdate("status", TAXI.status)
+            end
+            if outputChatBox then
+                outputChatBox("[Taxi] Заказ зафиксирован! Автокликер отключен", 50, 230, 100)
+            end
+        end)
+    end
+end
+
 -- Сброс состояния заказа при завершении
 local finishEvents = {
     "Taxi:onOrderFinished",

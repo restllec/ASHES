@@ -248,6 +248,21 @@ TaxiState g_taxiState;
 TaxiState g_visibleTaxiState;
 std::deque<std::string> g_taxiCommands;
 bool g_taxiDirty{true};
+
+struct TaxiClickerConfig
+{
+    bool enabled{true};
+    std::atomic_bool active{false};
+    int loc1X{814};
+    int loc1Y{405};
+    int loc2X{808};
+    int loc2Y{698};
+    int delayMs{70};
+    int hotkey{'2'};
+    bool autoStopOnOrder{true};
+    std::string status{"Ожидание активации (клавиша '2')"};
+};
+TaxiClickerConfig g_taxiClicker;
 char g_targetResource[128]{"province_ac"};
 std::uintptr_t g_selectedThread{};
 std::uintptr_t g_pendingUnload{};
@@ -2268,6 +2283,143 @@ void DrawAdminTab(ImVec2 position, ImVec2 size, float scale)
     ImGui::PopStyleVar();
 }
 
+static const char* GetKeyName(int vk);
+static bool KeyBindButton(const char* id, int* keyVal, float scale);
+
+static void LoadTaxiClickerSettings()
+{
+    static bool s_loaded = false;
+    if(s_loaded) return;
+    std::wstring ini = GetSettingsIniPath();
+    g_taxiClicker.enabled = GetPrivateProfileIntW(L"TaxiClicker", L"Enabled", 1, ini.c_str()) != 0;
+    g_taxiClicker.loc1X = GetPrivateProfileIntW(L"TaxiClicker", L"Loc1X", 814, ini.c_str());
+    g_taxiClicker.loc1Y = GetPrivateProfileIntW(L"TaxiClicker", L"Loc1Y", 405, ini.c_str());
+    g_taxiClicker.loc2X = GetPrivateProfileIntW(L"TaxiClicker", L"Loc2X", 808, ini.c_str());
+    g_taxiClicker.loc2Y = GetPrivateProfileIntW(L"TaxiClicker", L"Loc2Y", 698, ini.c_str());
+    g_taxiClicker.delayMs = GetPrivateProfileIntW(L"TaxiClicker", L"DelayMs", 70, ini.c_str());
+    g_taxiClicker.hotkey = GetPrivateProfileIntW(L"TaxiClicker", L"Hotkey", '2', ini.c_str());
+    g_taxiClicker.autoStopOnOrder = GetPrivateProfileIntW(L"TaxiClicker", L"AutoStop", 1, ini.c_str()) != 0;
+    s_loaded = true;
+}
+
+static void SaveTaxiClickerSettings()
+{
+    std::wstring ini = GetSettingsIniPath();
+    WritePrivateProfileStringW(L"TaxiClicker", L"Enabled", g_taxiClicker.enabled ? L"1" : L"0", ini.c_str());
+    WritePrivateProfileStringW(L"TaxiClicker", L"Loc1X", std::to_wstring(g_taxiClicker.loc1X).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"TaxiClicker", L"Loc1Y", std::to_wstring(g_taxiClicker.loc1Y).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"TaxiClicker", L"Loc2X", std::to_wstring(g_taxiClicker.loc2X).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"TaxiClicker", L"Loc2Y", std::to_wstring(g_taxiClicker.loc2Y).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"TaxiClicker", L"DelayMs", std::to_wstring(g_taxiClicker.delayMs).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"TaxiClicker", L"Hotkey", std::to_wstring(g_taxiClicker.hotkey).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"TaxiClicker", L"AutoStop", g_taxiClicker.autoStopOnOrder ? L"1" : L"0", ini.c_str());
+}
+
+static std::atomic_bool s_taxiClickerThreadRunning{false};
+
+static void TaxiClickerWorker()
+{
+    s_taxiClickerThreadRunning.store(true);
+    while(s_taxiClickerThreadRunning.load())
+    {
+        if(g_taxiClicker.enabled && g_taxiClicker.active.load())
+        {
+            if(g_taxiClicker.autoStopOnOrder && (g_taxiState.hasOrder || g_visibleTaxiState.hasOrder))
+            {
+                g_taxiClicker.active.store(false);
+                g_taxiClicker.status = "Заказ пойман! Кликер отключен";
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                continue;
+            }
+
+            HWND hwnd = InputUtil::GameWindow();
+            if(hwnd && GetForegroundWindow() == hwnd && !g_visible.load())
+            {
+                POINT p1{g_taxiClicker.loc1X, g_taxiClicker.loc1Y};
+                ClientToScreen(hwnd, &p1);
+                SetCursorPos(p1.x, p1.y);
+                mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+                std::this_thread::sleep_for(std::chrono::milliseconds(12));
+                mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(std::max(20, g_taxiClicker.delayMs)));
+
+                if(!g_taxiClicker.active.load())
+                    continue;
+
+                if(g_taxiClicker.autoStopOnOrder && (g_taxiState.hasOrder || g_visibleTaxiState.hasOrder))
+                {
+                    g_taxiClicker.active.store(false);
+                    g_taxiClicker.status = "Заказ пойман! Кликер отключен";
+                    continue;
+                }
+
+                POINT p2{g_taxiClicker.loc2X, g_taxiClicker.loc2Y};
+                ClientToScreen(hwnd, &p2);
+                SetCursorPos(p2.x, p2.y);
+                mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+                std::this_thread::sleep_for(std::chrono::milliseconds(12));
+                mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(std::max(20, g_taxiClicker.delayMs)));
+            }
+            else
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(40));
+            }
+        }
+        else
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        }
+    }
+}
+
+static void StartTaxiClickerWorker()
+{
+    if(!s_taxiClickerThreadRunning.load())
+    {
+        std::thread(TaxiClickerWorker).detach();
+    }
+}
+
+static void PulseTaxiClicker()
+{
+    LoadTaxiClickerSettings();
+    StartTaxiClickerWorker();
+
+    static bool s_taxiKeyHeld = false;
+    const int key = g_taxiClicker.hotkey > 0 ? g_taxiClicker.hotkey : '2';
+    const bool keyDown = (GetAsyncKeyState(key) & 0x8000) != 0;
+    if(keyDown && !s_taxiKeyHeld && !g_visible.load())
+    {
+        s_taxiKeyHeld = true;
+        if(g_taxiClicker.enabled)
+        {
+            const bool next = !g_taxiClicker.active.load();
+            g_taxiClicker.active.store(next);
+            g_taxiClicker.status = next ? "Кликер активен (поиск заказа)" : "Остановлен клавишей";
+            if(next)
+            {
+                PlayTramAlertSignal();
+            }
+        }
+    }
+    else if(!keyDown)
+    {
+        s_taxiKeyHeld = false;
+    }
+
+    if(g_taxiClicker.active.load() && g_taxiClicker.autoStopOnOrder)
+    {
+        if(g_taxiState.hasOrder || g_visibleTaxiState.hasOrder)
+        {
+            g_taxiClicker.active.store(false);
+            g_taxiClicker.status = "Заказ пойман! Кликер отключен";
+        }
+    }
+}
+
 void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale)
 {
     SyncTaxiState();
@@ -2333,6 +2485,46 @@ void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale)
     ImGui::Separator();
     ImGui::Spacing();
 
+    ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.95f, 1.0f), "КЛИКЕР ПО КООРДИНАТАМ (БИНД \"2\")");
+    ImGui::Spacing();
+
+    if(XonePlashkaToggle("Включить кликер по координатам", &g_taxiClicker.enabled, scale))
+    {
+        SaveTaxiClickerSettings();
+    }
+
+    const bool clickerActive = g_taxiClicker.active.load();
+    const char* clickerBtnLabel = clickerActive ? " ⏹  ОСТАНОВИТЬ КЛИКЕР (ИЛИ '2')" : " ⏻  ЗАПУСТИТЬ КЛИКЕР (ИЛИ '2')";
+    const ImU32 clickerBtnCol = clickerActive ? IM_COL32(215, 55, 55, 255) : IM_COL32(50, 160, 90, 255);
+    const ImU32 clickerBtnHov = clickerActive ? IM_COL32(240, 75, 75, 255) : IM_COL32(65, 185, 110, 255);
+    const ImU32 clickerBtnAct = clickerActive ? IM_COL32(185, 40, 40, 255) : IM_COL32(40, 140, 75, 255);
+
+    ImGui::PushStyleColor(ImGuiCol_Button, clickerBtnCol);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, clickerBtnHov);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, clickerBtnAct);
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f * scale);
+    if(ImGui::Button(clickerBtnLabel, ImVec2(-1.0f, 32.0f * scale)))
+    {
+        g_taxiClicker.active.store(!clickerActive);
+        g_taxiClicker.status = !clickerActive ? "Кликер активен (поиск заказа)" : "Остановлен пользователем";
+    }
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(4);
+    ImGui::Spacing();
+
+    if(XonePlashkaToggle("Авто-стоп при поимке заказа", &g_taxiClicker.autoStopOnOrder, scale))
+    {
+        SaveTaxiClickerSettings();
+    }
+
+    XonePlashkaValue("Статус кликера", g_taxiClicker.status.c_str(), scale,
+        clickerActive ? IM_COL32(80, 225, 120, 255) : IM_COL32(170, 175, 190, 255));
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
     ImGui::TextColored(taxi.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(1.0f, 0.4f, 0.3f, 1.0f),
         taxi.loaded ? "● Модуль внедрен в province_taxi" : "○ Ожидание загрузки ресурса такси");
     ImGui::TextColored(taxi.hasOrder ? ImVec4(0.95f, 0.75f, 0.2f, 1.0f) : ImVec4(0.5f, 0.8f, 1.0f, 1.0f),
@@ -2368,8 +2560,51 @@ void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale)
     ImGui::Separator();
     ImGui::Spacing();
 
-    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.8f, 1.0f), "Информация о работе:");
-    ImGui::TextWrapped("Бот автоматически опрашивает серверный список заказов с заданным интервалом и моментально отправляет вызов Taxi:checkOrder на ближайший заказ в пределах указанной дистанции.");
+    ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.95f, 1.0f), "НАСТРОЙКА КООРДИНАТ ТАКСИ БИНДА");
+    ImGui::Spacing();
+
+    char loc1Str[64];
+    std::snprintf(loc1Str, sizeof(loc1Str), "Локация 1: X = %d, Y = %d", g_taxiClicker.loc1X, g_taxiClicker.loc1Y);
+    if(XonePlashkaButton(loc1Str, "Выбрать лок. 1", scale, false))
+    {
+        POINT pt;
+        if(GetCursorPos(&pt))
+        {
+            HWND hwnd = InputUtil::GameWindow();
+            if(hwnd) ScreenToClient(hwnd, &pt);
+            g_taxiClicker.loc1X = pt.x;
+            g_taxiClicker.loc1Y = pt.y;
+            SaveTaxiClickerSettings();
+        }
+    }
+
+    char loc2Str[64];
+    std::snprintf(loc2Str, sizeof(loc2Str), "Локация 2: X = %d, Y = %d", g_taxiClicker.loc2X, g_taxiClicker.loc2Y);
+    if(XonePlashkaButton(loc2Str, "Выбрать лок. 2", scale, false))
+    {
+        POINT pt;
+        if(GetCursorPos(&pt))
+        {
+            HWND hwnd = InputUtil::GameWindow();
+            if(hwnd) ScreenToClient(hwnd, &pt);
+            g_taxiClicker.loc2X = pt.x;
+            g_taxiClicker.loc2Y = pt.y;
+            SaveTaxiClickerSettings();
+        }
+    }
+
+    if(XonePlashkaInt("Задержка клика (мс)", &g_taxiClicker.delayMs, 20, 500, scale))
+    {
+        SaveTaxiClickerSettings();
+    }
+
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.85f, 1.0f), "Клавиша бинда (по умолчанию '2'):");
+    ImGui::SameLine();
+    if(KeyBindButton("##taxi_hotkey_btn", &g_taxiClicker.hotkey, scale))
+    {
+        SaveTaxiClickerSettings();
+    }
 
     ImGui::EndChild();
 
@@ -2728,6 +2963,7 @@ static bool KeyBindButton(const char* id, int* keyVal, float scale)
                 {
                     *keyVal = k;
                     SaveClientMiscSettings();
+                    SaveTaxiClickerSettings();
                 }
                 s_activeBindId.clear();
                 return true;
@@ -3189,6 +3425,7 @@ void RenderFrame(IDirect3DDevice9* device)
     if(!device)
         return;
     PulseLuaBridge();
+    PulseTaxiClicker();
     if(!g_initialized && !InitializeGui(device))
         return;
     static bool toggleHeld{};
