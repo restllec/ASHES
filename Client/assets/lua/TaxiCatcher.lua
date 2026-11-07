@@ -236,13 +236,17 @@ if setTimer then
                     TAXI.status = "Поиск заказов..."
                 elseif cmd == "sound:1" then
                     TAXI.soundAlert = true
+                    if dfTaxiUpdate then dfTaxiUpdate("sound", "1") end
                 elseif cmd == "sound:0" then
                     TAXI.soundAlert = false
+                    if dfTaxiUpdate then dfTaxiUpdate("sound", "0") end
                 elseif cmd:sub(1, 9) == "max_dist:" then
                     TAXI.maxDistance = tonumber(cmd:sub(10)) or 1500.0
+                    if dfTaxiUpdate then dfTaxiUpdate("max_dist", tostring(math.floor(TAXI.maxDistance))) end
                 elseif cmd:sub(1, 10) == "poll_rate:" then
                     TAXI.pollInterval = tonumber(cmd:sub(11)) or 500
                     updateTimer()
+                    if dfTaxiUpdate then dfTaxiUpdate("poll_rate", tostring(math.floor(TAXI.pollInterval))) end
                 end
                 cmd = dfTaxiTakeCommand()
             end

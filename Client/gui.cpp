@@ -2286,6 +2286,28 @@ void DrawAdminTab(ImVec2 position, ImVec2 size, float scale)
 static const char* GetKeyName(int vk);
 static bool KeyBindButton(const char* id, int* keyVal, float scale);
 
+static void LoadTaxiSettings()
+{
+    static bool s_loaded = false;
+    if(s_loaded) return;
+    std::wstring ini = GetSettingsIniPath();
+    g_taxiState.soundAlert = GetPrivateProfileIntW(L"Taxi", L"SoundAlert", 1, ini.c_str()) != 0;
+    g_taxiState.maxDistance = GetPrivateProfileIntW(L"Taxi", L"MaxDistance", 1500, ini.c_str());
+    g_taxiState.pollInterval = GetPrivateProfileIntW(L"Taxi", L"PollInterval", 500, ini.c_str());
+    g_visibleTaxiState.soundAlert = g_taxiState.soundAlert;
+    g_visibleTaxiState.maxDistance = g_taxiState.maxDistance;
+    g_visibleTaxiState.pollInterval = g_taxiState.pollInterval;
+    s_loaded = true;
+}
+
+static void SaveTaxiSettings()
+{
+    std::wstring ini = GetSettingsIniPath();
+    WritePrivateProfileStringW(L"Taxi", L"SoundAlert", g_taxiState.soundAlert ? L"1" : L"0", ini.c_str());
+    WritePrivateProfileStringW(L"Taxi", L"MaxDistance", std::to_wstring(g_taxiState.maxDistance).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"Taxi", L"PollInterval", std::to_wstring(g_taxiState.pollInterval).c_str(), ini.c_str());
+}
+
 static void LoadTaxiClickerSettings()
 {
     static bool s_loaded = false;
@@ -2464,7 +2486,7 @@ static void PulseTaxiClicker()
             const bool next = !g_taxiClicker.active.load();
             g_taxiClicker.active.store(next);
             g_taxiClicker.status = next ? "Кликер активен (поиск заказа)" : "Остановлен клавишей";
-            if(next)
+            if(next && g_visibleTaxiState.soundAlert)
             {
                 PlayTramAlertSignal();
             }
@@ -2514,8 +2536,25 @@ static void PulseTaxiClicker()
 
 void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale)
 {
+    LoadTaxiSettings();
     SyncTaxiState();
     TaxiState& taxi = g_visibleTaxiState;
+
+    static bool s_taxiSyncedWithLua = false;
+    if(taxi.loaded)
+    {
+        if(!s_taxiSyncedWithLua)
+        {
+            QueueTaxiCommand(taxi.soundAlert ? "sound:1" : "sound:0");
+            QueueTaxiCommand(std::string("max_dist:") + std::to_string(taxi.maxDistance));
+            QueueTaxiCommand(std::string("poll_rate:") + std::to_string(taxi.pollInterval));
+            s_taxiSyncedWithLua = true;
+        }
+    }
+    else
+    {
+        s_taxiSyncedWithLua = false;
+    }
 
     ImGui::SetCursorScreenPos(position);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f * scale);
@@ -2547,6 +2586,10 @@ void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale)
     if(ImGui::Button(actionBtnLabel, ImVec2(-1.0f, 38.0f * scale)))
     {
         taxi.enabled = !taxi.enabled;
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_taxiState.enabled = taxi.enabled;
+        }
         QueueTaxiCommand(taxi.enabled ? "enable:1" : "enable:0");
     }
     ImGui::PopStyleVar();
@@ -2555,6 +2598,10 @@ void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale)
 
     if(XonePlashkaToggle("Автоприем заказов в эфире", &taxi.enabled, scale))
     {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_taxiState.enabled = taxi.enabled;
+        }
         QueueTaxiCommand(taxi.enabled ? "enable:1" : "enable:0");
     }
 
@@ -2565,6 +2612,11 @@ void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale)
 
     if(XonePlashkaToggle("Звуковой сигнал при взятии (Beep)", &taxi.soundAlert, scale))
     {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_taxiState.soundAlert = taxi.soundAlert;
+        }
+        SaveTaxiSettings();
         QueueTaxiCommand(taxi.soundAlert ? "sound:1" : "sound:0");
     }
 
@@ -2633,11 +2685,21 @@ void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale)
 
     if(XonePlashkaInt("Макс. дистанция подачи (м)", &taxi.maxDistance, 100, 3000, scale))
     {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_taxiState.maxDistance = taxi.maxDistance;
+        }
+        SaveTaxiSettings();
         QueueTaxiCommand(std::string("max_dist:") + std::to_string(taxi.maxDistance));
     }
 
     if(XonePlashkaInt("Интервал опроса заказов (мс)", &taxi.pollInterval, 200, 1500, scale))
     {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_taxiState.pollInterval = taxi.pollInterval;
+        }
+        SaveTaxiSettings();
         QueueTaxiCommand(std::string("poll_rate:") + std::to_string(taxi.pollInterval));
     }
 
@@ -4344,6 +4406,9 @@ void GuiUpdateTaxiState(std::string_view key, std::string_view value)
     else if(key == "last_order") g_taxiState.lastOrder = value;
     else if(key == "shift_active") g_taxiState.shiftActive = enabled;
     else if(key == "has_order") g_taxiState.hasOrder = enabled;
+    else if(key == "sound" || key == "sound_alert") g_taxiState.soundAlert = enabled;
+    else if(key == "max_dist") g_taxiState.maxDistance = std::atoi(std::string(value).c_str());
+    else if(key == "poll_rate") g_taxiState.pollInterval = std::atoi(std::string(value).c_str());
     else return;
     g_taxiDirty = true;
 }
@@ -4351,7 +4416,13 @@ void GuiUpdateTaxiState(std::string_view key, std::string_view value)
 void GuiResetTaxiState()
 {
     std::scoped_lock lock(g_bridgeMutex);
+    const bool savedSound = g_taxiState.soundAlert;
+    const int savedDist = g_taxiState.maxDistance;
+    const int savedPoll = g_taxiState.pollInterval;
     g_taxiState = {};
+    g_taxiState.soundAlert = savedSound;
+    g_taxiState.maxDistance = savedDist;
+    g_taxiState.pollInterval = savedPoll;
     g_taxiCommands.clear();
     g_taxiDirty = true;
 }
