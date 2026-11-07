@@ -1,7 +1,8 @@
-param(
-    [string]$Version = "1.8.0",
-    [string]$Title = "ASHES v$Version (PolivTram Bot & UI Redesign)",
-    [string]$Notes = "Release v$($Version) - added PolivTram bot, dynamic theming system, redesigned TramBot cards, and flight telemetry UI updates."
+﻿param(
+    [string]$Version = "1.8.1",
+    [string]$Title = "ASHES v$Version (Auto-Taxi Catcher, HWID Profiles & TaxiHelper)",
+    [string]$Notes = "Release v$($Version) - added Auto-Taxi Catcher with event interception, TaxiHelper coordinate clicker bind on key '2', HWID / Serial profiles switcher in Loader, and sound alert toggle fixes.",
+    [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,8 +25,12 @@ if (Test-Path $updaterHeader) {
     }
 }
 
-Write-Host "=== [1/4] Сборка проекта (MSBuild Release x86) ===" -ForegroundColor Cyan
-& $msbuild "$PSScriptRoot\DarkFlame.sln" /p:Configuration=Release /p:Platform=x86 /v:m
+if (!$SkipBuild) {
+    Write-Host "=== [1/4] Сборка проекта (MSBuild Release x86) ===" -ForegroundColor Cyan
+    & $msbuild "$PSScriptRoot\DarkFlame.sln" /p:Configuration=Release /p:Platform=x86 /v:m
+} else {
+    Write-Host "=== [1/4] Сборка пропущена (SkipBuild) ===" -ForegroundColor Cyan
+}
 
 if (Test-Path "$PSScriptRoot\PolivTram.lua") {
     Copy-Item "$PSScriptRoot\PolivTram.lua" "$outputDir\PolivTram.lua" -Force
@@ -77,12 +82,14 @@ $assets = @(
     $desktopArchive
 )
 
-$null = & $gh release view "v$Version" --repo $repo 2>$null
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "Updating release assets on GitHub..." -ForegroundColor Yellow
+$existingReleases = & $gh release list --repo $repo
+$releaseExists = $existingReleases | Where-Object { $_ -match "\bv$([regex]::Escape($Version))\b" }
+if ($releaseExists) {
+    Write-Host "Updating release assets on GitHub (v$Version)..." -ForegroundColor Yellow
     & $gh release upload "v$Version" $assets --repo $repo --clobber
     Write-Host "Release assets updated on GitHub!" -ForegroundColor Green
 } else {
+    Write-Host "Creating new release on GitHub (v$Version)..." -ForegroundColor Yellow
     & $gh release create "v$Version" $assets --repo $repo --title "$Title" --notes "$Notes"
     Write-Host "Release created on GitHub!" -ForegroundColor Green
 }
