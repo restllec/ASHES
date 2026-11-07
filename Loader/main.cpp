@@ -3,6 +3,7 @@
 #include "loader_license.h"
 #include "path_utils.h"
 #include "updater.h"
+#include "serial_profiles.h"
 #include "loader_resources.h"
 #include "../Shared/runtime_log.h"
 #include "../Shared/ashes_logo.h"
@@ -506,7 +507,7 @@ void DrawLicenseCard(ImDrawList* draw, ImVec2 origin, float width)
 void DrawSettingsCard(ImDrawList* draw, ImVec2 origin, float width)
 {
     const ImVec2 cardPos(origin.x + 16.0f, origin.y + 204.0f);
-    const ImVec2 cardSize(width, 270.0f);
+    const ImVec2 cardSize(width, 274.0f);
     const ImVec2 cardEnd(cardPos.x + cardSize.x, cardPos.y + cardSize.y);
 
     draw->AddRectFilled(cardPos, cardEnd, IM_COL32(20, 21, 26, 255), 6.0f);
@@ -538,7 +539,7 @@ void DrawSettingsCard(ImDrawList* draw, ImVec2 origin, float width)
 
     // Поле ввода Serial с кнопкой быстрого копирования внутри BeginChild
     const ImVec2 serPos(cardPos.x + 10.0f, cardPos.y + 166.0f);
-    const ImVec2 serSize(cardSize.x - 20.0f, 88.0f);
+    const ImVec2 serSize(cardSize.x - 20.0f, 102.0f);
 
     static char s_serialBuf[36]{};
     static bool s_serialInit = false;
@@ -557,27 +558,100 @@ void DrawSettingsCard(ImDrawList* draw, ImVec2 origin, float width)
     ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 14));
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 8.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 6.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 5.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 3.0f));
 
     if(ImGui::BeginChild("##serial_frame", serSize, true, ImGuiWindowFlags_NoScrollbar))
     {
-        // 1. Метка поля
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(142, 146, 162, 255));
-        ImGui::TextUnformatted("Серийник (Serial / 32 HEX):");
-        ImGui::PopStyleColor();
+        // 1. Выпадающий список профилей серийников
+        const float availW = ImGui::GetContentRegionAvail().x;
+        std::string previewTitle = g_serialProfiles.isCustom ? "[Кастомный / Не сохранен]" :
+            (g_serialProfiles.selectedProfile >= 0 && g_serialProfiles.selectedProfile < static_cast<int>(g_serialProfiles.profiles.size())
+                ? g_serialProfiles.profiles[g_serialProfiles.selectedProfile].name : "Выберите профиль");
 
-        // 2. Поле ввода + кнопка копирования
         ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(12, 13, 16, 255));
         ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 18));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 4.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 2.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+
+        ImGui::SetNextItemWidth(availW - 54.0f);
+        if(ImGui::BeginCombo("##serial_profiles_combo", previewTitle.c_str()))
+        {
+            for(int i = 0; i < static_cast<int>(g_serialProfiles.profiles.size()); ++i)
+            {
+                const bool isSel = (!g_serialProfiles.isCustom && g_serialProfiles.selectedProfile == i);
+                if(ImGui::Selectable(g_serialProfiles.profiles[i].name.c_str(), isSel))
+                {
+                    g_serialProfiles.SelectProfile(i, g_config.publicSerial);
+                    std::snprintf(s_serialBuf, sizeof(s_serialBuf), "%s", g_config.publicSerial.c_str());
+                    g_serialProfiles.Save(g_directory);
+                    SaveConfig();
+                }
+                if(isSel)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::SameLine(0.0f, 4.0f);
+        if(ImGui::Button("+##add_prof", ImVec2(23.0f, 20.0f)))
+        {
+            ImGui::OpenPopup("##new_profile_popup");
+        }
+
+        ImGui::SameLine(0.0f, 4.0f);
+        if(ImGui::Button("X##del_prof", ImVec2(23.0f, 20.0f)))
+        {
+            if(!g_serialProfiles.profiles.empty())
+            {
+                g_serialProfiles.RemoveProfile(g_serialProfiles.selectedProfile, g_config.publicSerial);
+                std::snprintf(s_serialBuf, sizeof(s_serialBuf), "%s", g_config.publicSerial.c_str());
+                g_serialProfiles.Save(g_directory);
+                SaveConfig();
+            }
+        }
+
+        if(ImGui::BeginPopup("##new_profile_popup"))
+        {
+            static char s_npName[64] = "Профиль";
+            static char s_npNote[64] = "";
+            ImGui::TextUnformatted("Новый профиль серийника:");
+            ImGui::InputText("Название##np_n", s_npName, sizeof(s_npName));
+            ImGui::InputText("Заметка##np_note", s_npNote, sizeof(s_npNote));
+            if(ImGui::Button("Сохранить##np_save", ImVec2(80.0f, 22.0f)))
+            {
+                g_serialProfiles.AddProfile(s_npName, s_serialBuf, s_npNote);
+                g_serialProfiles.Save(g_directory);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if(ImGui::Button("Отмена##np_cancel", ImVec2(70.0f, 22.0f)))
+            {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+
+        // 2. Метка поля + статус
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(142, 146, 162, 255));
+        ImGui::TextUnformatted("Серийник (Serial / 32 HEX):");
+        ImGui::PopStyleColor();
+        if(g_serialProfiles.isCustom)
+        {
+            ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(235, 170, 60, 255));
+            ImGui::TextUnformatted("[Кастомный]");
+            ImGui::PopStyleColor();
+        }
+
+        // 3. Поле ввода + кнопка копирования
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 90.0f);
         if(ImGui::InputText("##public_serial", s_serialBuf, sizeof(s_serialBuf),
             ImGuiInputTextFlags_CharsUppercase | ImGuiInputTextFlags_CallbackCharFilter, FilterSerial))
         {
             g_config.publicSerial = s_serialBuf;
+            g_serialProfiles.UpdateCustomStatus(g_config.publicSerial);
             SaveConfig();
         }
         ImGui::PopStyleVar(3);
@@ -591,7 +665,7 @@ void DrawSettingsCard(ImDrawList* draw, ImVec2 origin, float width)
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(22, 24, 30, 255));
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(220, 225, 240, 255));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-        if(ImGui::Button(serCopyText, ImVec2(84.0f, 24.0f)))
+        if(ImGui::Button(serCopyText, ImVec2(84.0f, 22.0f)))
         {
             ImGui::SetClipboardText(g_config.publicSerial.c_str());
             s_serialCopiedTimer = 2.0f;
@@ -599,10 +673,17 @@ void DrawSettingsCard(ImDrawList* draw, ImVec2 origin, float width)
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(4);
 
-        // 3. Подстрочник с отступом ItemSpacing.y от поля и гарантированным отступом снизу
+        // 4. Подстрочник с заметкой или подсказкой
         if(g_regularFont) ImGui::PushFont(g_regularFont);
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 135, 150, 255));
-        ImGui::TextUnformatted("Привязан к вашему аккаунту MTA Province");
+        std::string subtext = "Привязан к вашему аккаунту MTA Province";
+        if(!g_serialProfiles.isCustom && g_serialProfiles.selectedProfile >= 0
+            && g_serialProfiles.selectedProfile < static_cast<int>(g_serialProfiles.profiles.size())
+            && !g_serialProfiles.profiles[g_serialProfiles.selectedProfile].note.empty())
+        {
+            subtext = g_serialProfiles.profiles[g_serialProfiles.selectedProfile].note;
+        }
+        ImGui::TextUnformatted(subtext.c_str());
         ImGui::PopStyleColor();
         if(g_regularFont) ImGui::PopFont();
     }
@@ -1560,6 +1641,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     g_directory = LoaderPath::OwnDirectory();
     SetCurrentDirectoryW(g_directory.c_str());
     g_config = Config::Load(g_directory);
+    g_serialProfiles.Load(g_directory, g_config.publicSerial);
+    if (!g_serialProfiles.isCustom && g_serialProfiles.selectedProfile >= 0
+        && g_serialProfiles.selectedProfile < static_cast<int>(g_serialProfiles.profiles.size()))
+    {
+        g_config.publicSerial = g_serialProfiles.profiles[g_serialProfiles.selectedProfile].serial;
+    }
 
     // 1. Initialize License state and load existing key
     g_license.hwid = LoaderLicense::GenerateHWID(g_license.mac);

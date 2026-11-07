@@ -230,6 +230,24 @@ struct LesorubState
 LesorubState g_lesorubState;
 LesorubState g_visibleLesorubState;
 std::deque<std::string> g_lesorubCommands;
+
+struct TaxiState
+{
+    bool loaded{false};
+    bool enabled{false};
+    int maxDistance{1500};
+    int pollInterval{500};
+    bool soundAlert{true};
+    bool shiftActive{false};
+    bool hasOrder{false};
+    std::string ordersCount{"0"};
+    std::string lastOrder{"нет"};
+    std::string status{"Ожидание запуска"};
+};
+TaxiState g_taxiState;
+TaxiState g_visibleTaxiState;
+std::deque<std::string> g_taxiCommands;
+bool g_taxiDirty{true};
 char g_targetResource[128]{"province_ac"};
 std::uintptr_t g_selectedThread{};
 std::uintptr_t g_pendingUnload{};
@@ -859,6 +877,23 @@ void SyncLesorubState()
     g_lesorubDirty = false;
 }
 
+void QueueTaxiCommand(std::string command)
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    if(g_taxiCommands.size() >= 64)
+        g_taxiCommands.pop_front();
+    g_taxiCommands.push_back(std::move(command));
+}
+
+void SyncTaxiState()
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    if(!g_taxiDirty)
+        return;
+    g_visibleTaxiState = g_taxiState;
+    g_taxiDirty = false;
+}
+
 void TramButton(const char* label, const char* command)
 {
     if(ImGui::Button(label))
@@ -874,6 +909,7 @@ void TramToggle(const char* label, bool& value, const char* command)
 void RenderProLockOverlay(ImVec2 origin, ImVec2 size, float scale);
 void DrawLicenseTab(ImVec2 position, ImVec2 size, float scale);
 void DrawWoodBot(ImVec2 position, ImVec2 size, float scale);
+void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale);
 
 namespace
 {
@@ -2232,6 +2268,116 @@ void DrawAdminTab(ImVec2 position, ImVec2 size, float scale)
     ImGui::PopStyleVar();
 }
 
+void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale)
+{
+    SyncTaxiState();
+    TaxiState& taxi = g_visibleTaxiState;
+
+    ImGui::SetCursorScreenPos(position);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 18, 135));
+    ImGui::BeginChild("##taxi_tab", size, ImGuiChildFlags_Borders);
+
+    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, 1.0f), "ТАКСИ (AUTO-TAXI CATCHER) — ПЕРЕХВАТ ЗАКАЗОВ");
+    ImGui::Separator();
+
+    float availW = ImGui::GetContentRegionAvail().x;
+    float colW = (availW - 14.0f * scale) * 0.5f;
+
+    // Левая колонка — Управление сменой и перехватом
+    ImGui::BeginChild("##taxi_col_left", ImVec2(colW, 0.0f), ImGuiChildFlags_None);
+    ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.95f, 1.0f), "УПРАВЛЕНИЕ И СМЕНА");
+    ImGui::Spacing();
+
+    const bool isRunning = taxi.enabled;
+    const char* actionBtnLabel = isRunning ? " ⏹  ОСТАНОВИТЬ АВТОПРИЕМ" : " ⏻  ЗАПУСТИТЬ АВТОПРИЕМ";
+    const ImU32 actionBtnColor = isRunning ? IM_COL32(215, 55, 55, 255) : g_Theme.AccentU32();
+    const ImU32 actionBtnHover = isRunning ? IM_COL32(240, 75, 75, 255) : g_Theme.HoverU32();
+    const ImU32 actionBtnActive = isRunning ? IM_COL32(185, 40, 40, 255) : g_Theme.ActiveU32();
+
+    ImGui::PushStyleColor(ImGuiCol_Button, actionBtnColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, actionBtnHover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, actionBtnActive);
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f * scale);
+    if(ImGui::Button(actionBtnLabel, ImVec2(-1.0f, 38.0f * scale)))
+    {
+        taxi.enabled = !taxi.enabled;
+        QueueTaxiCommand(taxi.enabled ? "enable:1" : "enable:0");
+    }
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(4);
+    ImGui::Spacing();
+
+    if(XonePlashkaToggle("Автоприем заказов в эфире", &taxi.enabled, scale))
+    {
+        QueueTaxiCommand(taxi.enabled ? "enable:1" : "enable:0");
+    }
+
+    if(XonePlashkaButton("Смена в такси", taxi.shiftActive ? "В смене (Активна)" : "Выйти на смену", scale, !taxi.shiftActive))
+    {
+        QueueTaxiCommand("start_shift");
+    }
+
+    if(XonePlashkaToggle("Звуковой сигнал при взятии (Beep)", &taxi.soundAlert, scale))
+    {
+        QueueTaxiCommand(taxi.soundAlert ? "sound:1" : "sound:0");
+    }
+
+    if(XonePlashkaButton("Текущий заказ", "Сбросить заказ", scale, false))
+    {
+        QueueTaxiCommand("reset_order");
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::TextColored(taxi.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(1.0f, 0.4f, 0.3f, 1.0f),
+        taxi.loaded ? "● Модуль внедрен в province_taxi" : "○ Ожидание загрузки ресурса такси");
+    ImGui::TextColored(taxi.hasOrder ? ImVec4(0.95f, 0.75f, 0.2f, 1.0f) : ImVec4(0.5f, 0.8f, 1.0f, 1.0f),
+        taxi.hasOrder ? "Статус: На заказе (опрос на паузе)" : "Статус: Свободен (поиск заказов)");
+
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    // Правая колонка — Параметры фильтрации и мониторинг
+    ImGui::BeginChild("##taxi_col_right", ImVec2(colW, 0.0f), ImGuiChildFlags_None);
+    ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.95f, 1.0f), "ПАРАМЕТРЫ ФИЛЬТРА И ТЕЛЕМЕТРИЯ");
+    ImGui::Spacing();
+
+    if(XonePlashkaInt("Макс. дистанция подачи (м)", &taxi.maxDistance, 100, 3000, scale))
+    {
+        QueueTaxiCommand(std::string("max_dist:") + std::to_string(taxi.maxDistance));
+    }
+
+    if(XonePlashkaInt("Интервал опроса заказов (мс)", &taxi.pollInterval, 200, 1500, scale))
+    {
+        QueueTaxiCommand(std::string("poll_rate:") + std::to_string(taxi.pollInterval));
+    }
+
+    ImGui::Spacing();
+
+    XonePlashkaValue("Заказов в эфире", taxi.ordersCount.c_str(), scale, IM_COL32(200, 220, 255, 255));
+    XonePlashkaValue("Последний заказ", taxi.lastOrder.c_str(), scale, IM_COL32(245, 185, 55, 255));
+    XonePlashkaValue("Состояние бота", taxi.status.c_str(), scale,
+        taxi.enabled ? IM_COL32(80, 225, 120, 255) : IM_COL32(180, 180, 190, 255));
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.8f, 1.0f), "Информация о работе:");
+    ImGui::TextWrapped("Бот автоматически опрашивает серверный список заказов с заданным интервалом и моментально отправляет вызов Taxi:checkOrder на ближайший заказ в пределах указанной дистанции.");
+
+    ImGui::EndChild();
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+}
+
 void DrawThreadList(ImVec2 position, ImVec2 size, float scale)
 {
     SyncThreads();
@@ -2871,11 +3017,12 @@ void RenderMenu()
         {"##tab_factory", "Пешеходы", 4, false},
         {"##tab_pilot", "Pilot", 5, false},
         {"##tab_plow", "Поливалка (Авто)", 6, false},
+        {"##tab_taxi", "Такси", 10, false},
         {"##tab_admin", "Админы", 7, true},
         {"##tab_settings", "Настройки", 9, false}
     };
     const bool isPro = IsProLicense();
-    const int tabCount = 9;
+    const int tabCount = 10;
     for(int i = 0; i < tabCount; ++i)
     {
         ImVec2 tabPos(origin.x + 8.0f * scale, origin.y + (54.0f + i * 33.0f) * scale);
@@ -3025,6 +3172,10 @@ void RenderMenu()
     else if(g_activeTab == 9)
     {
         DrawMiscTab(contentPosition, contentSize, scale);
+    }
+    else if(g_activeTab == 10)
+    {
+        DrawTaxiTab(contentPosition, contentSize, scale);
     }
     ImGui::PopFont();
 
@@ -3827,4 +3978,37 @@ void GuiResetLesorubState()
     g_lesorubState = {};
     g_lesorubCommands.clear();
     g_lesorubDirty = true;
+}
+
+bool GuiTakeTaxiCommand(std::string& command)
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    if(g_taxiCommands.empty())
+        return false;
+    command = std::move(g_taxiCommands.front());
+    g_taxiCommands.pop_front();
+    return true;
+}
+
+void GuiUpdateTaxiState(std::string_view key, std::string_view value)
+{
+    const bool enabled = value == "1" || value == "true";
+    std::scoped_lock lock(g_bridgeMutex);
+    if(key == "loaded") g_taxiState.loaded = enabled;
+    else if(key == "enabled") g_taxiState.enabled = enabled;
+    else if(key == "status") g_taxiState.status = value;
+    else if(key == "orders_count") g_taxiState.ordersCount = value;
+    else if(key == "last_order") g_taxiState.lastOrder = value;
+    else if(key == "shift_active") g_taxiState.shiftActive = enabled;
+    else if(key == "has_order") g_taxiState.hasOrder = enabled;
+    else return;
+    g_taxiDirty = true;
+}
+
+void GuiResetTaxiState()
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    g_taxiState = {};
+    g_taxiCommands.clear();
+    g_taxiDirty = true;
 }

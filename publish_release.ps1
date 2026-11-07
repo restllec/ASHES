@@ -30,6 +30,9 @@ Write-Host "=== [1/4] Сборка проекта (MSBuild Release x86) ===" -Fo
 if (Test-Path "$PSScriptRoot\PolivTram.lua") {
     Copy-Item "$PSScriptRoot\PolivTram.lua" "$outputDir\PolivTram.lua" -Force
 }
+if (Test-Path "$PSScriptRoot\TaxiCatcher.lua") {
+    Copy-Item "$PSScriptRoot\TaxiCatcher.lua" "$outputDir\TaxiCatcher.lua" -Force
+}
 
 Write-Host "=== [2/4] Генерация манифеста version.json ===" -ForegroundColor Cyan
 & "$PSScriptRoot\generate_version_manifest.ps1" -Version $Version -Repo $repo -OutputDir $outputDir
@@ -46,6 +49,7 @@ $filesToPack = @(
     "$outputDir\PlowBot.lua",
     "$outputDir\PlowMarks.txt",
     "$outputDir\PolivTram.lua",
+    "$outputDir\TaxiCatcher.lua",
     "$outputDir\tobacco.lua",
     "$outputDir\TramBot.lua"
 )
@@ -66,6 +70,7 @@ $assets = @(
     "$outputDir\JBKBot.lua",
     "$outputDir\jtu_bot.lua",
     "$outputDir\lesorub.lua",
+    "$outputDir\TaxiCatcher.lua",
     "$outputDir\tobacco.lua",
     "$outputDir\PilotTelemetry.lua",
     "$outputDir\PlowMarks.txt",

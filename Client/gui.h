@@ -42,3 +42,6 @@ bool GuiTakeTobaccoCommand(std::string& command);
 void GuiUpdateLesorubState(std::string_view key, std::string_view value);
 void GuiResetLesorubState();
 bool GuiTakeLesorubCommand(std::string& command);
+void GuiUpdateTaxiState(std::string_view key, std::string_view value);
+void GuiResetTaxiState();
+bool GuiTakeTaxiCommand(std::string& command);

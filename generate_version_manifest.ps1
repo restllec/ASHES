@@ -14,6 +14,7 @@ $filesToInclude = @(
     "PlowBot.lua",
     "PlowMarks.txt",
     "PolivTram.lua",
+    "TaxiCatcher.lua",
     "tobacco.lua",
     "TramBot.lua"
 )
