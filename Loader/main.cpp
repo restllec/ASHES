@@ -37,8 +37,10 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window,
 
 namespace
 {
+constexpr float WINDOW_PADDING = 16.0f;
+constexpr float ITEM_GAP = 12.0f;
 constexpr int WindowWidth = 800;
-constexpr int WindowHeight = 520;
+constexpr int WindowHeight = 498;
 
 HWND g_window{};
 IDirect3D9* g_d3d{};
@@ -347,8 +349,8 @@ void DrawHeader(ImDrawList* draw, ImVec2 origin, float width)
     const float headerY = origin.y + 14.0f;
     const float badgeH = 22.0f;
 
-    // 1. Close button (right-most)
-    const ImVec2 closePos(origin.x + width - 36.0f, headerY);
+    // 1. Close button (right-most, strictly aligned with WINDOW_PADDING)
+    const ImVec2 closePos(origin.x + width - WINDOW_PADDING - 22.0f, headerY);
     const ImVec2 closeSize(22.0f, badgeH);
 
     // 2. Single Version Badge: PRO or FREE
@@ -384,9 +386,8 @@ void DrawHeader(ImDrawList* draw, ImVec2 origin, float width)
     ImGui::EndGroup();
 }
 
-void DrawLicenseCard(ImDrawList* draw, ImVec2 origin, float width)
+void DrawLicenseCard(ImDrawList* draw, ImVec2 cardPos, float width)
 {
-    const ImVec2 cardPos(origin.x + 16.0f, origin.y + 56.0f);
     const ImVec2 cardSize(width, 142.0f);
     const ImVec2 cardEnd(cardPos.x + cardSize.x, cardPos.y + cardSize.y);
 
@@ -504,10 +505,9 @@ void DrawLicenseCard(ImDrawList* draw, ImVec2 origin, float width)
     ImGui::PopStyleColor(4);
 }
 
-void DrawSettingsCard(ImDrawList* draw, ImVec2 origin, float width)
+void DrawSettingsCard(ImDrawList* draw, ImVec2 cardPos, float width, float height = 276.0f)
 {
-    const ImVec2 cardPos(origin.x + 16.0f, origin.y + 204.0f);
-    const ImVec2 cardSize(width, 274.0f);
+    const ImVec2 cardSize(width, height);
     const ImVec2 cardEnd(cardPos.x + cardSize.x, cardPos.y + cardSize.y);
 
     draw->AddRectFilled(cardPos, cardEnd, IM_COL32(20, 21, 26, 255), 6.0f);
@@ -692,10 +692,9 @@ void DrawSettingsCard(ImDrawList* draw, ImVec2 origin, float width)
     ImGui::PopStyleColor(2);
 }
 
-void DrawConsoleCard(ImDrawList* draw, ImVec2 origin, float width, const Launcher::ProcessInfo& proc)
+void DrawConsoleCard(ImDrawList* draw, ImVec2 cardPos, float width, float height, const Launcher::ProcessInfo& proc)
 {
-    const ImVec2 cardPos(origin.x + 364.0f, origin.y + 56.0f);
-    const ImVec2 cardSize(width, 418.0f);
+    const ImVec2 cardSize(width, height);
     const ImVec2 cardEnd(cardPos.x + cardSize.x, cardPos.y + cardSize.y);
 
     draw->AddRectFilled(cardPos, cardEnd, IM_COL32(20, 21, 26, 255), 6.0f);
@@ -742,10 +741,18 @@ void DrawConsoleCard(ImDrawList* draw, ImVec2 origin, float width, const Launche
         draw->AddText(ImVec2(statPos.x + 24.0f, statPos.y + 6.0f), IM_COL32(180, 185, 200, 255), "Ожидание запуска игры...");
     }
 
-    // 3. Вывод логов
+    // 3. Вывод логов и расчет нижней части карточки
+    const float tglH = 32.0f;
+    const float btnH = 38.0f;
+    const float bottomPad = 14.0f;
+    const float btnY = cardPos.y + cardSize.y - bottomPad - btnH;
+    const float tglY = btnY - 6.0f - tglH;
+    const float memoEndY = tglY - 6.0f;
+    const float memoH = memoEndY - (cardPos.y + 86.0f);
+
     SyncMemo();
     const ImVec2 memoPos(cardPos.x + 10.0f, cardPos.y + 86.0f);
-    const ImVec2 memoSize(cardSize.x - 20.0f, 218.0f);
+    const ImVec2 memoSize(cardSize.x - 20.0f, memoH);
     ImGui::SetCursorScreenPos(memoPos);
     ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(12, 13, 16, 255));
     ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 14));
@@ -759,8 +766,8 @@ void DrawConsoleCard(ImDrawList* draw, ImVec2 origin, float width, const Launche
     ImGui::PopStyleColor(3);
 
     // 4. Тумблер авто-инжекта
-    const ImVec2 tglPos(cardPos.x + 10.0f, cardPos.y + 310.0f);
-    const ImVec2 tglSize(cardSize.x - 20.0f, 32.0f);
+    const ImVec2 tglPos(cardPos.x + 10.0f, tglY);
+    const ImVec2 tglSize(cardSize.x - 20.0f, tglH);
     const ImVec2 tglEnd(tglPos.x + tglSize.x, tglPos.y + tglSize.y);
     draw->AddRectFilled(tglPos, tglEnd, IM_COL32(14, 15, 18, 255), 4.0f);
     draw->AddRect(tglPos, tglEnd, IM_COL32(255, 255, 255, 14), 4.0f, 0, 1.0f);
@@ -777,8 +784,8 @@ void DrawConsoleCard(ImDrawList* draw, ImVec2 origin, float width, const Launche
     }
 
     // 5. Большая кнопка запуска
-    const ImVec2 btnPos(cardPos.x + 10.0f, cardPos.y + 348.0f);
-    const ImVec2 btnSize(cardSize.x - 20.0f, 44.0f);
+    const ImVec2 btnPos(cardPos.x + 10.0f, btnY);
+    const ImVec2 btnSize(cardSize.x - 20.0f, btnH);
     ImGui::SetCursorScreenPos(btnPos);
 
     const bool canInject = !g_injected && !g_isInjecting.load();
@@ -801,7 +808,7 @@ void DrawConsoleCard(ImDrawList* draw, ImVec2 origin, float width, const Launche
     if(!g_injectStatusMsg.empty())
     {
         const ImVec2 msgSize = ImGui::CalcTextSize(g_injectStatusMsg.c_str());
-        draw->AddText(ImVec2(cardPos.x + (cardSize.x - msgSize.x) * 0.5f, cardPos.y + 398.0f),
+        draw->AddText(ImVec2(cardPos.x + (cardSize.x - msgSize.x) * 0.5f, btnY + btnH + 1.0f),
             g_injected ? IM_COL32(74, 222, 128, 255) : IM_COL32(248, 113, 113, 255),
             g_injectStatusMsg.c_str());
     }
@@ -1501,27 +1508,35 @@ void DrawWindow()
     const ImVec2 origin = ImGui::GetWindowPos();
     ImDrawList* draw = ImGui::GetWindowDrawList();
 
+    const ImVec2 pMin = origin;
+    const ImVec2 pMax = ImVec2(origin.x + display.x, origin.y + display.y);
+
     // 1. Классический строгий темно-серый / графитовый фон ASHES #121212 / #181818
-    draw->AddRectFilled(origin, ImVec2(origin.x + display.x, origin.y + display.y),
-        IM_COL32(18, 18, 20, 255), 6.0f);
+    draw->AddRectFilled(pMin, pMax, IM_COL32(18, 18, 20, 255), 10.0f);
 
     // 2. Волны
-    DrawAnimatedWaves(draw, origin, display);
+    DrawAnimatedWaves(draw, pMin, display);
 
-    // 3. Тонкая аккуратная рамка окна
-    draw->AddRect(origin, ImVec2(origin.x + display.x, origin.y + display.y),
-        IM_COL32(255, 255, 255, 18), 6.0f, 0, 1.0f);
+    // 3. Внешний кантик окна (Border Stroke) строго по границам pMin..pMax
+    draw->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 24), 10.0f, 0, 1.0f);
 
     // 4. Header (ASHES by restleSS + бейджи + закрытие)
     DrawHeader(draw, origin, display.x);
 
+    // Симметричный расчет колонок 50/50 и единых внешних отступов WINDOW_PADDING
+    const float availableWidth = display.x - (WINDOW_PADDING * 2.0f);
+    const float columnWidth = (availableWidth - ITEM_GAP) * 0.5f;
+    const float contentTop = origin.y + 54.0f;
+    const float totalContentHeight = 428.0f;
+
     // Левая колонка: Блок «Лицензия и устройство» + «Настройки лоадера (флаги)»
-    const float leftW = 346.0f;
-    DrawLicenseCard(draw, origin, leftW);
-    DrawSettingsCard(draw, origin, leftW);
+    const ImVec2 leftPos(origin.x + WINDOW_PADDING, contentTop);
+    DrawLicenseCard(draw, leftPos, columnWidth);
+    DrawSettingsCard(draw, ImVec2(leftPos.x, leftPos.y + 142.0f + 10.0f), columnWidth, 276.0f);
 
     // Правая колонка: Блок «Вывод логов / Статус» + авто-инжект + кнопка запуска
-    DrawConsoleCard(draw, origin, display.x - leftW - 44.0f, s_procInfo);
+    const ImVec2 rightPos(origin.x + WINDOW_PADDING + columnWidth + ITEM_GAP, contentTop);
+    DrawConsoleCard(draw, rightPos, columnWidth, totalContentHeight, s_procInfo);
 
     ImGui::End();
     ImGui::PopStyleColor();
@@ -1685,8 +1700,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         return 1;
     }
 
-    // Set 12px smooth rounded corners for Win32 window
-    HRGN rgn = CreateRoundRectRgn(0, 0, WindowWidth + 1, WindowHeight + 1, 24, 24);
+    // Set 10px smooth rounded corners for Win32 window (matching ImGui 10.0f border rounding)
+    HRGN rgn = CreateRoundRectRgn(0, 0, WindowWidth + 1, WindowHeight + 1, 20, 20);
     SetWindowRgn(g_window, rgn, TRUE);
 
     IMGUI_CHECKVERSION();
