@@ -1256,7 +1256,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(20, 20, 28, 255));
         ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 14));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f * scale);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f * scale, 8.0f * scale));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * scale, 10.0f * scale));
         ImGuiChildFlags childFlags = ImGuiChildFlags_Borders;
         if(height == 0.0f)
             childFlags |= ImGuiChildFlags_AutoResizeY;
@@ -1286,15 +1286,15 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         ImGui::EndChild();
         ImGui::PopStyleVar(2);
         ImGui::PopStyleColor(2);
-        ImGui::Spacing();
     };
 
     auto SaveCurrentSettings = [&]() {
         SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.autoLights, state.silentChat, s_selectedTramRouteIndex);
     };
 
-    // Левая колонка (45% ширины): 7 карточек параметров и безопасности
-    ImGui::BeginChild("##tram_col_left", ImVec2(leftColW, 0.0f), false, ImGuiWindowFlags_NoScrollbar);
+    // Левая колонка (45% ширины): 7 карточек параметров со скроллингом
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 8.0f * scale));
+    ImGui::BeginChild("##tram_col_left", ImVec2(leftColW, -1.0f), false, ImGuiWindowFlags_NoScrollbar);
 
     // 1. Карточка «Работа»
     BeginCard("##card_tram_work", TramIcons::DrawGear, "Работа", "Основные настройки запуска и маршрута");
@@ -1389,7 +1389,9 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PopStyleColor(4);
 
     ImGui::Spacing();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
     ImGui::TextColored(ImVec4(0.50f, 0.52f, 0.58f, 1.0f), "Выбор в списке не отправляет команду автоматически");
+    ImGui::PopTextWrapPos();
     EndCard();
 
     // 2. Карточка «ДТП»
@@ -1502,14 +1504,16 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     EndCard();
 
     ImGui::EndChild(); // ##tram_col_left
+    ImGui::PopStyleVar();
 
     ImGui::SameLine(0, 10.0f * scale);
 
     // Правая колонка (55% ширины): Мониторинг и Журнал событий
-    ImGui::BeginChild("##tram_col_right", ImVec2(rightColW, 0.0f), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 8.0f * scale));
+    ImGui::BeginChild("##tram_col_right", ImVec2(rightColW, -1.0f), false, ImGuiWindowFlags_NoScrollbar);
 
-    // 1. Карточка «Текущее состояние»
-    BeginCard("##card_tram_status", TramIcons::DrawChart, "Текущее состояние", nullptr, 136.0f * scale);
+    // 1. Карточка «Текущее состояние» (высота по контенту)
+    BeginCard("##card_tram_status", TramIcons::DrawChart, "Текущее состояние", nullptr, 0.0f);
     {
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - 145.0f * scale);
         if(state.bot)
@@ -1523,8 +1527,8 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 
         if(ImGui::BeginTable("##tram_telemetry_table", 2, ImGuiTableFlags_None))
         {
-            ImGui::TableSetupColumn("##tram_tel_c1", ImGuiTableColumnFlags_WidthStretch, 0.46f);
-            ImGui::TableSetupColumn("##tram_tel_c2", ImGuiTableColumnFlags_WidthStretch, 0.54f);
+            ImGui::TableSetupColumn("##tram_tel_c1", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("##tram_tel_c2", ImGuiTableColumnFlags_WidthFixed, 145.0f * scale);
 
             ImDrawList* curDl = ImGui::GetWindowDrawList();
 
@@ -1690,6 +1694,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     EndCard();
 
     ImGui::EndChild(); // ##tram_col_right
+    ImGui::PopStyleVar();
 
     ImGui::EndChild();
     ImGui::PopStyleColor(9);
