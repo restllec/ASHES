@@ -378,27 +378,6 @@ int __cdecl EmitEvent(void* lua)
 
 int __cdecl DirectTramTakeCommand(void* lua)
 {
-    const std::uintptr_t currentId = reinterpret_cast<std::uintptr_t>(lua);
-    const int currentSub = GuiGetTramSubMode();
-    if(currentSub == 0)
-    {
-        if(currentId == g_trampSession.load(std::memory_order_acquire) ||
-           currentId == g_jtuSession.load(std::memory_order_acquire))
-            return 0;
-    }
-    else if(currentSub == 1)
-    {
-        if(currentId == g_tramSession.load(std::memory_order_acquire) ||
-           currentId == g_trampSession.load(std::memory_order_acquire))
-            return 0;
-    }
-    else if(currentSub == 2)
-    {
-        if(currentId == g_tramSession.load(std::memory_order_acquire) ||
-           currentId == g_jtuSession.load(std::memory_order_acquire))
-            return 0;
-    }
-
     std::string command;
     if(!GuiTakeTramCommand(command))
         return 0;
@@ -1595,6 +1574,7 @@ bool InjectIntoResource(std::string_view resource, std::string_view code,
     g_scopeDepth.fetch_sub(1, std::memory_order_acq_rel);
     if(!executed)
     {
+        Log::Write(L"[lua-bridge] RunLuaChunk failed for " + WideAscii(resource) + L": " + WideAscii(error));
         std::string ignored;
         RunLuaChunk(thread, CleanupChunk(id), ignored);
         DarkFlameLuaUnref(target.state, LuaRegistryIndex, reference);
@@ -2320,6 +2300,7 @@ void TryStartJtuBot()
     }
 
     g_jtuState.store(0, std::memory_order_release);
+    Log::Write(L"[jtubot] runtime injection pending: " + WideAscii(error));
 }
 
 void TryStartTramPolivBot()
@@ -2364,6 +2345,7 @@ void TryStartTramPolivBot()
     }
 
     g_trampState.store(0, std::memory_order_release);
+    Log::Write(L"[tramppoliv] runtime injection pending: " + WideAscii(error));
 }
 
 void ResetForReconnect(bool immediate = false)

@@ -1151,7 +1151,7 @@ local function isInside(mx, my, x, y, w, h)
 end
 
 local function renderJTU()
-    return
+    do return end
 
     sw, sh = guiGetScreenSize()
 
@@ -1379,6 +1379,7 @@ setTimer(function()
             if cmd == "tramp_start" or cmd == "bot:1" then
                 startJTU()
             elseif cmd == "tramp_take_route" or cmd == "take_route" then
+                running = true
                 acceptJob(true)
             elseif cmd == "tramp_stop" or cmd == "bot:0" then
                 stopJTU()
@@ -1441,10 +1442,8 @@ setTimer(function()
         api.updateState("tramp_distmode", tostring(distanceMode or 2))
         api.updateState("tramp_route", selectedRoute)
         api.updateState("tramp_route_name", routeNames[selectedRoute])
-        if running then
-            api.updateState("status", phaseText())
-            api.updateState("bot", "1")
-        end
+        api.updateState("status", phaseText())
+        api.updateState("bot", running and "1" or "0")
     end
 end, 300, 0)
 
