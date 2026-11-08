@@ -13,6 +13,24 @@ for name, fn in pairs(api) do
     end
 end
 
+local function notify(text, nType)
+    local clean = tostring(text):gsub("#%x%x%x%x%x%x", ""):gsub("%[JBK%]%s*", ""):gsub("%[SAFETY%]%s*", ""):gsub("%[SIM%]%s*", ""):gsub("%[MRK%]%s*", "")
+    if dfPushToast then
+        dfPushToast("ЖБК Бот", clean, nType or "info")
+    end
+end
+
+local outputChatBox = function(text, r, g, b, colorCoded)
+    local nType = "info"
+    local s = tostring(text)
+    if s:find("остановлен", 1, true) or s:find("исчерпан", 1, true) or s:find("не найден", 1, true) or s:find("SAFETY", 1, true) or (r and r > 200 and g and g < 100) then
+        nType = "warning"
+    elseif s:find("включен", 1, true) or s:find("запущен", 1, true) or (g and g > 200 and r and r < 100) then
+        nType = "success"
+    end
+    notify(text, nType)
+end
+
 local _STATE = false
 local syncOptionsBotState = function() end
 local syncNativeJbkState = function() end

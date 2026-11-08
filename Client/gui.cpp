@@ -2108,64 +2108,179 @@ void RenderAdminCheckerHud(float scale)
     ImGui::PopStyleVar(2);
 }
 
-void RenderAdminToast(float scale)
+struct GuiToastMessage
+{
+    std::string title;
+    std::string message;
+    std::string type; // "admin", "warning", "error", "success", "info"
+    float durationSec{3.8f};
+    std::chrono::steady_clock::time_point startTime{};
+    bool started{false};
+};
+
+static std::mutex g_toastMutex;
+static std::deque<GuiToastMessage> g_toastQueue;
+static std::vector<GuiToastMessage> g_activeToasts;
+static std::string g_lastToastMsg;
+static std::chrono::steady_clock::time_point g_lastToastTime{};
+
+void InternalPushToast(std::string_view title, std::string_view message, std::string_view type, float durationSec)
+{
+    if(title.empty() && message.empty())
+        return;
+
+    std::scoped_lock lock(g_toastMutex);
+    const auto now = std::chrono::steady_clock::now();
+    std::string fullMsg = std::string(title) + "|" + std::string(message);
+    if(fullMsg == g_lastToastMsg)
+    {
+        float elapsedLast = std::chrono::duration<float>(now - g_lastToastTime).count();
+        if(elapsedLast < 1.0f)
+            return;
+    }
+    g_lastToastMsg = fullMsg;
+    g_lastToastTime = now;
+
+    if(g_toastQueue.size() >= 16)
+        g_toastQueue.pop_front();
+
+    GuiToastMessage toast;
+    toast.title = std::string(title);
+    toast.message = std::string(message);
+    toast.type = type.empty() ? "info" : std::string(type);
+    toast.durationSec = durationSec > 0.5f ? durationSec : 3.8f;
+    toast.started = false;
+
+    if(toast.type == "admin")
+        g_toastQueue.push_front(toast);
+    else
+        g_toastQueue.push_back(toast);
+}
+
+void RenderToasts(float scale)
 {
     auto& db = AdminDatabase::Instance();
-    if(!db.toastEnabled || !db.IsToastActive())
-        return;
+    if(db.toastEnabled && db.IsToastActive())
+    {
+        AdminToastData adminData = db.GetToastData();
+        static std::chrono::steady_clock::time_point lastAdminToastStart{};
+        if(adminData.startTime != lastAdminToastStart)
+        {
+            lastAdminToastStart = adminData.startTime;
+            char buf[128];
+            snprintf(buf, sizeof(buf), "%s (%s | %d ур.)", adminData.nick.c_str(), adminData.role.c_str(), adminData.level);
+            InternalPushToast("За вами следит администратор", buf, "admin", adminData.durationSec);
+        }
+    }
 
-    AdminToastData toast = db.GetToastData();
-    auto elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - toast.startTime).count();
-    if(elapsed >= toast.durationSec)
-        return;
+    std::scoped_lock lock(g_toastMutex);
+    const auto now = std::chrono::steady_clock::now();
 
-    float alpha = 1.0f;
-    if(elapsed < 0.3f)
-        alpha = elapsed / 0.3f;
-    else if(elapsed > (toast.durationSec - 0.8f))
-        alpha = (toast.durationSec - elapsed) / 0.8f;
-    alpha = std::clamp(alpha, 0.0f, 1.0f);
+    for(auto it = g_activeToasts.begin(); it != g_activeToasts.end();)
+    {
+        float elapsed = std::chrono::duration<float>(now - it->startTime).count();
+        if(elapsed >= it->durationSec)
+            it = g_activeToasts.erase(it);
+        else
+            ++it;
+    }
+
+    constexpr size_t MAX_VISIBLE_TOASTS = 3;
+    while(g_activeToasts.size() < MAX_VISIBLE_TOASTS && !g_toastQueue.empty())
+    {
+        auto item = g_toastQueue.front();
+        g_toastQueue.pop_front();
+        item.startTime = now;
+        item.started = true;
+        g_activeToasts.push_back(item);
+    }
+
+    if(g_activeToasts.empty())
+        return;
 
     ImGuiIO& io = ImGui::GetIO();
-    float toastW = 390.0f * scale;
-    float toastH = 64.0f * scale;
-    ImVec2 toastPos((io.DisplaySize.x - toastW) * 0.5f, 38.0f * scale);
+    const float toastW = 390.0f * scale;
+    const float toastH = 58.0f * scale;
+    const float toastGap = 8.0f * scale;
+    const float startY = 38.0f * scale;
 
-    ImGui::SetNextWindowPos(toastPos, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(toastW, toastH), ImGuiCond_Always);
-
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration
         | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings
         | ImGuiWindowFlags_NoBackground;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
-    if(ImGui::Begin("AdminToastAlert", nullptr, flags))
+    for(size_t i = 0; i < g_activeToasts.size(); ++i)
     {
-        ImDrawList* draw = ImGui::GetWindowDrawList();
-        ImVec2 p0 = toastPos;
-        ImVec2 p1(toastPos.x + toastW, toastPos.y + toastH);
+        const auto& toast = g_activeToasts[i];
+        float elapsed = std::chrono::duration<float>(now - toast.startTime).count();
+        if(elapsed >= toast.durationSec)
+            continue;
 
-        draw->AddRectFilled(p0, p1, IM_COL32(20, 20, 26, static_cast<int>(245 * alpha)), 8.0f * scale);
-        draw->AddRect(p0, p1, IM_COL32(60, 60, 75, static_cast<int>(200 * alpha)), 8.0f * scale, 0, 1.0f);
+        float alpha = 1.0f;
+        if(elapsed < 0.25f)
+            alpha = elapsed / 0.25f;
+        else if(elapsed > (toast.durationSec - 0.6f))
+            alpha = (toast.durationSec - elapsed) / 0.6f;
+        alpha = std::clamp(alpha, 0.0f, 1.0f);
 
-        draw->AddRectFilled(ImVec2(p0.x + 8.0f * scale, p1.y - 3.5f * scale),
-            ImVec2(p1.x - 8.0f * scale, p1.y - 1.0f * scale),
-            IM_COL32(245, 175, 40, static_cast<int>(255 * alpha)), 2.0f * scale);
+        const float posY = startY + static_cast<float>(i) * (toastH + toastGap);
+        const ImVec2 toastPos((io.DisplaySize.x - toastW) * 0.5f, posY);
 
-        draw->AddCircleFilled(ImVec2(p0.x + 22.0f * scale, p0.y + 26.0f * scale), 6.0f * scale,
-            IM_COL32(245, 175, 40, static_cast<int>(240 * alpha)));
-        draw->AddCircleFilled(ImVec2(p0.x + 22.0f * scale, p0.y + 26.0f * scale), 2.5f * scale,
-            IM_COL32(20, 20, 26, static_cast<int>(255 * alpha)));
+        ImGui::SetNextWindowPos(toastPos, ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(toastW, toastH), ImGuiCond_Always);
 
-        ImGui::SetCursorScreenPos(ImVec2(p0.x + 36.0f * scale, p0.y + 12.0f * scale));
-        ImGui::TextColored(ImVec4(0.96f, 0.72f, 0.22f, alpha), "За вами следит администратор");
+        ImU32 accentCol = IM_COL32(56, 189, 248, static_cast<int>(255 * alpha));
+        ImVec4 titleCol = ImVec4(0.35f, 0.78f, 0.98f, alpha);
+        if(toast.type == "admin" || toast.type == "warning")
+        {
+            accentCol = IM_COL32(245, 175, 40, static_cast<int>(255 * alpha));
+            titleCol = ImVec4(0.96f, 0.72f, 0.22f, alpha);
+        }
+        else if(toast.type == "error")
+        {
+            accentCol = IM_COL32(239, 68, 68, static_cast<int>(255 * alpha));
+            titleCol = ImVec4(0.95f, 0.35f, 0.35f, alpha);
+        }
+        else if(toast.type == "success")
+        {
+            accentCol = IM_COL32(52, 211, 153, static_cast<int>(255 * alpha));
+            titleCol = ImVec4(0.35f, 0.88f, 0.65f, alpha);
+        }
 
-        ImGui::SetCursorScreenPos(ImVec2(p0.x + 36.0f * scale, p0.y + 32.0f * scale));
-        ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, alpha), "%s (%s | %d ур.)",
-            toast.nick.c_str(), toast.role.c_str(), toast.level);
+        char winId[32];
+        snprintf(winId, sizeof(winId), "Toast_%zu", i);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
+        if(ImGui::Begin(winId, nullptr, flags))
+        {
+            ImDrawList* draw = ImGui::GetWindowDrawList();
+            ImVec2 p0 = toastPos;
+            ImVec2 p1(toastPos.x + toastW, toastPos.y + toastH);
+
+            draw->AddRectFilled(p0, p1, IM_COL32(20, 20, 26, static_cast<int>(245 * alpha)), 8.0f * scale);
+            draw->AddRect(p0, p1, IM_COL32(60, 60, 75, static_cast<int>(200 * alpha)), 8.0f * scale, 0, 1.0f);
+
+            draw->AddRectFilled(ImVec2(p0.x + 8.0f * scale, p1.y - 3.0f * scale),
+                ImVec2(p1.x - 8.0f * scale, p1.y - 1.0f * scale),
+                accentCol, 2.0f * scale);
+
+            draw->AddCircleFilled(ImVec2(p0.x + 20.0f * scale, p0.y + 24.0f * scale), 5.5f * scale, accentCol);
+            draw->AddCircleFilled(ImVec2(p0.x + 20.0f * scale, p0.y + 24.0f * scale), 2.5f * scale,
+                IM_COL32(20, 20, 26, static_cast<int>(255 * alpha)));
+
+            ImGui::SetCursorScreenPos(ImVec2(p0.x + 34.0f * scale, p0.y + 10.0f * scale));
+            ImGui::TextColored(titleCol, "%s", toast.title.c_str());
+
+            ImGui::SetCursorScreenPos(ImVec2(p0.x + 34.0f * scale, p0.y + 28.0f * scale));
+            ImGui::TextColored(ImVec4(0.92f, 0.92f, 0.95f, alpha), "%s", toast.message.c_str());
+        }
+        ImGui::End();
+        ImGui::PopStyleVar();
     }
-    ImGui::End();
-    ImGui::PopStyleVar();
+}
+
+void RenderAdminToast(float scale)
+{
+    RenderToasts(scale);
 }
 
 void DrawAdminTab(ImVec2 position, ImVec2 size, float scale)
@@ -4429,4 +4544,9 @@ void GuiResetTaxiState()
     g_taxiState.pollInterval = savedPoll;
     g_taxiCommands.clear();
     g_taxiDirty = true;
+}
+
+void GuiPushToast(std::string_view title, std::string_view message, std::string_view type, float durationSec)
+{
+    InternalPushToast(title, message, type, durationSec);
 }

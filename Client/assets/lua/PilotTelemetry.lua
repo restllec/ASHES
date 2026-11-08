@@ -2435,7 +2435,7 @@ local function safetyAlert(key, cooldown, text, data)
     -- Both recorded autopilot stalls followed an alert; the timings below show whether the native
     -- sound call itself is the cost or whether the stall happens in the engine afterwards.
     local playCallMs = elapsed(getTickCount(), now)
-    if text then outputChatBox("#FF5555[Pilot Safety] #FFFFFF" .. text, 255, 255, 255, true) end
+    if text and dfPushToast then dfPushToast("Пилот", tostring(text), "warning") end
     -- Buffered, not forced: the alert frame is already the heaviest one of the session (sound + chat).
     -- The buffer lands on disk within 250 ms anyway.
     emit("safety_alert", {kind = key, text = text or NULL, played = played, context = data or NULL,
@@ -4054,7 +4054,7 @@ updateAutopilot = function(item, now)
             safetyAlert("autopilot_hold", 10000, "Автопилот удержал самолёт (" .. tostring(hold) .. "): "
                 .. tostring(autopilot.status) .. ". Перехват — любая клавиша полёта.", {reason = hold, phase = autopilot.phase})
         elseif state.lastHold then
-            outputChatBox("#55FF55[Pilot] #FFFFFFОриентир восстановлен, автопилот продолжает.", 255, 255, 255, true)
+            if dfPushToast then dfPushToast("Пилот", "Ориентир восстановлен, автопилот продолжает.", "success") end
         end
         emit("autopilot_hold", {reason = hold or NULL, previous = state.lastHold or NULL, phase = autopilot.phase}, true)
         state.lastHold = hold

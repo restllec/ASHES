@@ -37,7 +37,7 @@ std::atomic<HMODULE> g_netcModule{};
 std::wstring g_loaderDirectory;
 bool g_antiShadow{true};
 bool g_scriptsDumper{};
-bool g_setSerial{true};
+bool g_setSerial{false};
 bool g_randomSerial{};
 std::string g_publicSerial{"E97AEE3B69AAE6B8E699D851A6289902"};
 
@@ -400,7 +400,7 @@ BOOL WINAPI DllMain(HMODULE module, DWORD reason, void* reserved)
         std::wstring loadedEventName = Environment::Read(BootstrapProtocol::ClientLoadedEventVariable);
         g_antiShadow = ConfigFlag(BootstrapProtocol::AntiShadowVariable, true);
         g_scriptsDumper = ConfigFlag(BootstrapProtocol::ScriptsDumperVariable, false);
-        g_setSerial = ConfigFlag(BootstrapProtocol::SetSerialVariable, true);
+        g_setSerial = ConfigFlag(BootstrapProtocol::SetSerialVariable, false);
         g_randomSerial = ConfigFlag(BootstrapProtocol::RandomSerialVariable, false);
         const std::wstring publicSerial = Environment::Read(BootstrapProtocol::PublicSerialVariable);
         if(!publicSerial.empty())

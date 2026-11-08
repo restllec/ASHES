@@ -77,21 +77,19 @@ local function log(text)
     if api.log then api.log("[JTU] " .. tostring(text)) end
 end
 
--- Обычные сообщения: только в панель/лог, в чат НЕ пишем
-local function notify(text)
+local function notify(text, nType)
+    if dfPushToast then
+        dfPushToast("JTU", tostring(text), nType or "info")
+    end
     log(text)
 end
 
--- Сообщение в чат (только важные)
 local function chatInfo(text)
-    outputChatBox("[JTU] " .. tostring(text), 185, 110, 255)
-    log(text)
+    notify(text, "info")
 end
 
--- Красное предупреждение в чат
 local function chatError(text)
-    outputChatBox("[JTU] " .. tostring(text), 255, 0, 0)
-    log("ОШИБКА: " .. tostring(text))
+    notify(text, "error")
 end
 
 local function setTargetCycles(value)
@@ -445,7 +443,6 @@ function startJTU()
     brakeV0, brakeD0 = nil, nil
 
     chatInfo("Бот запущен")
-    outputChatBox("[ЖТУ] Скрипт запущен | Автор: restleSS", 100, 200, 255, false)
     startJob()
 end
 
@@ -808,11 +805,5 @@ addEventHandler("onClientResourceStop", resourceRoot, function()
     releaseMovement()
     if isElement(train) then
         setSpeed(0)
-    end
-end)
-
-bindKey("space", "down", function()
-    if running then
-        stopJTU()
     end
 end)

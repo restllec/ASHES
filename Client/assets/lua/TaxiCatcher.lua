@@ -48,8 +48,8 @@ local function startShift()
     TAXI.status = "Выход на смену..."
     callTaxiEvent("Taxi:startTaxiJob", true)
     callTaxiEvent("Taxi:onJobAccepted", true)
-    if outputChatBox then
-        outputChatBox("[Taxi] Запрос на выход на смену отправлен", 100, 200, 255)
+    if dfPushToast then
+        dfPushToast("Такси", "Запрос на выход на смену отправлен", "info")
     end
 end
 
@@ -78,8 +78,8 @@ local function acceptOrder(order, dist)
     TAXI.lastOrderInfo = tostring(clientName) .. " (" .. tostring(orderClass) .. ", " .. tostring(distInt) .. "м)"
     TAXI.status = "Заказ принят: " .. TAXI.lastOrderInfo
 
-    if outputChatBox then
-        outputChatBox("[Taxi] Принят заказ: " .. tostring(clientName) .. " [" .. tostring(orderClass) .. "], дистанция " .. tostring(distInt) .. " м", 50, 230, 100)
+    if dfPushToast then
+        dfPushToast("Такси", "Принят заказ: " .. tostring(clientName) .. " [" .. tostring(orderClass) .. "], " .. tostring(distInt) .. " м", "success")
     end
 
     if TAXI.soundAlert and playSoundFrontEnd then
@@ -171,8 +171,8 @@ for _, ev in ipairs(orderCaughtEvents) do
                 dfTaxiUpdate("has_order", "1")
                 dfTaxiUpdate("status", TAXI.status)
             end
-            if outputChatBox then
-                outputChatBox("[Taxi] Заказ зафиксирован! Автокликер отключен", 50, 230, 100)
+            if dfPushToast then
+                dfPushToast("Такси", "Заказ зафиксирован! Автокликер отключен", "success")
             end
         end)
     end

@@ -14,7 +14,7 @@ struct DarkFlameConfig
 {
     bool antiShadow{true};
     bool scriptsDumper{};
-    bool setSerial{true};
+    bool setSerial{false};
     bool randomSerial{};
     bool serialValid{true};
     std::string publicSerial{"E97AEE3B69AAE6B8E699D851A6289902"};
@@ -46,7 +46,7 @@ namespace Config
 inline constexpr std::string_view Defaults =
     "ANTI_SHADOW=1\n"
     "SCRIPTS_DUMPER=0\n"
-    "SET_SERIAL=1\n"
+    "SET_SERIAL=0\n"
     "RANDOM_SERIAL=0\n"
     "PUBLIC_SERIAL=E97AEE3B69AAE6B8E699D851A6289902\n";
 

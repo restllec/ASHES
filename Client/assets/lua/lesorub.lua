@@ -143,8 +143,8 @@ local function updateAntiStuck(now, px, py, isMoving)
                 antiStuck.evadeOffset = antiStuck.evadeDir * 75
                 antiStuck.evading = true
                 antiStuck.evadeUntil = now + 900
-                if bot.debug then
-                    outputChatBox(string.format("[Lesorub] Анти-застревание: прыжок! Сдвиг: %.2fм", moved), 255, 150, 50, false)
+                if bot.debug and dfPushToast then
+                    dfPushToast("Лесоруб", string.format("Анти-застревание: прыжок (сдвиг %.2fм)", moved), "warning")
                 end
                 return antiStuck.evadeOffset
             end
@@ -202,12 +202,7 @@ local function setTarget(blip, point, matchDistance)
     bot.targetPoint = point
     bot.cameraReset = true
 
-    if bot.debug then
-        outputChatBox(string.format(
-            "[Lesorub] Новая цель #%d, совпадение %.1f м",
-            point.id, matchDistance
-        ), 100, 200, 255, false)
-    end
+
 end
 
 local function clearTarget()
@@ -236,9 +231,7 @@ local function setMiniGameKey(newKey, source)
     if not newKey then return end
     if miniGame.key ~= newKey then
         miniGame.key = newKey
-        if bot.debug then
-            outputChatBox(string.format("[Lesorub] Смена клавиши: %s (%s)", tostring(newKey), tostring(source)), 100, 255, 100, false)
-        end
+
     end
 end
 
@@ -360,15 +353,17 @@ end
 local function startBot()
     bot.enabled = true
     clearTarget()
-    outputChatBox("[Lesorub] Бот запущен (Разработчик: xelni_ai & restleSS)", 100, 200, 255, false)
-    outputChatBox("[Lesorub] Система: Raycast-обход + Anti-Stuck + Авто-рубка активны", 100, 220, 255, false)
-    outputChatBox("[Lesorub] Статус: ожидание blip icon 0", 100, 200, 255, false)
+    if dfPushToast then
+        dfPushToast("Лесоруб", "Бот запущен. Авто-рубка активна", "success")
+    end
 end
 
 local function stopBot()
     bot.enabled = false
     clearTarget()
-    outputChatBox("[Lesorub] Бот выключен", 255, 180, 80, false)
+    if dfPushToast then
+        dfPushToast("Лесоруб", "Бот выключен", "warning")
+    end
 end
 
 local function toggleBot()
@@ -378,26 +373,6 @@ local function toggleBot()
         startBot()
     end
 end
-
--- Экспорт глобальных функций управления
-_G.startBot = startBot
-_G.stopBot = stopBot
-_G.toggleBot = toggleBot
-_G.lesorub_start = startBot
-_G.lesorub_stop = stopBot
-_G.lesorub_toggle = toggleBot
-
--- Команды консоли и чата
-addCommandHandler("lesorub", toggleBot)
-addCommandHandler("lesorub_toggle", toggleBot)
-addCommandHandler("lesorub_start", startBot)
-addCommandHandler("lesorub_stop", stopBot)
-
--- Клавиша быстрой отладки
-bindKey("o", "down", function()
-    bot.debug = not bot.debug
-    outputChatBox("[Lesorub] debug: " .. (bot.debug and "ON" or "OFF"), 100, 200, 255, false)
-end)
 
 -- Интеграция с UI через Lua Bridge
 setTimer(function()
@@ -491,4 +466,6 @@ addEventHandler("onClientResourceStop", resourceRoot, function()
     clearTarget()
 end)
 
-outputChatBox("[Lesorub] Скрипт загружен (Разработчик: xelni_ai & restleSS)", 100, 200, 255, false)
+if dfPushToast then
+    dfPushToast("Лесоруб", "Скрипт загружен и готов к работе", "info")
+end

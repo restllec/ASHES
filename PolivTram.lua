@@ -252,23 +252,19 @@ local function log(text)
     if api.log then api.log("[TramPolivBot] " .. tostring(text)) end
 end
 
--- Обычные сообщения: только в панель/лог, в чат НЕ пишем
-local function notify(text)
-    log(text)
-end
-
--- Сообщение в чат (только важные)
-local function chatInfo(text)
-    if not silentChat then
-        outputChatBox("[TramPolivBot] " .. tostring(text), 255, 255, 255)
+local function notify(text, nType)
+    if dfPushToast then
+        dfPushToast("Поливалка", tostring(text), nType or "info")
     end
     log(text)
 end
 
--- Красное предупреждение в чат
+local function chatInfo(text)
+    notify(text, "info")
+end
+
 local function chatError(text)
-    outputChatBox("[TramPolivBot] " .. tostring(text), 255, 0, 0)
-    log("ОШИБКА: " .. tostring(text))
+    notify(text, "error")
 end
 
 local function setBrakeDistance(value)
@@ -1413,7 +1409,7 @@ setTimer(function() applyTrafficByTime(false) end, 5000, 0)
 
 -- /trampspeed — показать скорость, как её считает бот (сверьте со спидометром)
 addCommandHandler("trampspeed", function()
-    outputChatBox(string.format("[TramPolivBot] Скорость: %.1f км/ч", speedKmh), 255, 255, 255)
+    notify(string.format("Скорость: %.1f км/ч", speedKmh), "info")
 end)
 
 setTimer(function()

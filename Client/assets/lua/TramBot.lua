@@ -286,19 +286,16 @@ local silentChat = false
 
 -- Shared helpers and event registration.
 local function notify(text, errorMessage)
-    if silentChat and not errorMessage then
-        api.log(tostring(text))
-        return
+    local nType = errorMessage and "error" or "info"
+    if dfPushToast then
+        dfPushToast("TramBot", tostring(text), nType)
     end
-    outputChatBox((errorMessage and "#FF5555[TramBot] " or "#55FF88[TramBot] ") .. tostring(text), 255, 255, 255, true)
+    api.log(tostring(text))
 end
 
 local function debugOutput(text)
     text = tostring(text)
     api.log(text)
-    if debugEnabled then
-        outputChatBox("#E6A15C[TramBot debug] #FFFFFF" .. text, 255, 255, 255, true)
-    end
 end
 
 local function debugChange(key, value, text)
@@ -1700,7 +1697,9 @@ local function handleCommand(command)
             notify("Не удалось запустить сирену — смотри DarkFlame.log", true)
         end
     elseif name == "admin" then
-        outputChatBox("#00FF00[ТРЕВОГА] Админ крикнул: #FF6600" .. value, 255, 255, 255, true)
+        if dfPushToast then
+            dfPushToast("ТРЕВОГА", "Админ крикнул: " .. tostring(value), "admin", 6.0)
+        end
         if isElement(train) then
             setTrainSpeed(train, 0)
             debugOutput("Админ проверка: состав экстренно остановлен")

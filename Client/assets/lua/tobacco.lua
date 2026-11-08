@@ -57,7 +57,7 @@ end
 
 if not common.send_message then
     common.send_message = function(text)
-        if outputChatBox then outputChatBox("[Ответ ИИ] " .. tostring(text), 220, 220, 220) end
+        if dfPushToast then dfPushToast("Табачка", "[Ответ ИИ] " .. tostring(text), "info") end
         if executeCommandHandler then executeCommandHandler("say", tostring(text)) end
     end
 end

@@ -261,6 +261,7 @@ int __cdecl DirectRemoveDebugHook(void* lua);
 int __cdecl DirectEmulateKey(void* lua);
 int __cdecl DirectEmulateMouseButton(void* lua);
 int __cdecl DirectPlayAlertSignal(void* lua);
+int __cdecl DirectPushToast(void* lua);
 int __cdecl DirectSetAlertMonitorEnabled(void* lua);
 int __cdecl DirectCatchServerEvent(void* lua);
 int __cdecl DirectRemoveEventCatcher(void* lua);
@@ -616,6 +617,8 @@ void RegisterDirectAliases(void* lua)
     RegisterPrivate(lua, "dfLesorubUpdate", &DirectLesorubUpdate);
     RegisterPrivate(lua, "dfTaxiTakeCommand", &DirectTaxiTakeCommand);
     RegisterPrivate(lua, "dfTaxiUpdate", &DirectTaxiUpdate);
+    RegisterPrivate(lua, "dfPushToast", &DirectPushToast);
+    RegisterPrivate(lua, "dfToast", &DirectPushToast);
     RegisterPrivate(lua, "dfMenuOpen", &MenuOpen);
 }
 
@@ -1159,6 +1162,29 @@ int __cdecl DirectEmulateMouseButton(void* lua)
 int __cdecl DirectPlayAlertSignal(void* lua)
 {
     return PushDirectResult(lua, PlayTramAlertSignal());
+}
+
+int __cdecl DirectPushToast(void* lua)
+{
+    const int top = DarkFlameLuaGetTop(lua);
+    if(top < 2)
+        return 0;
+
+    const std::string title = LuaText(lua, 1, 128, false);
+    const std::string msg = LuaText(lua, 2, 256, false);
+    std::string type = "info";
+    if(top >= 3)
+        type = LuaText(lua, 3, 32, false);
+    float duration = 3.8f;
+    if(top >= 4)
+    {
+        const double d = DarkFlameLuaToNumber(lua, 4);
+        if(d > 0.5)
+            duration = static_cast<float>(d);
+    }
+
+    GuiPushToast(title, msg, type, duration);
+    return 0;
 }
 
 int __cdecl DirectSetAlertMonitorEnabled(void* lua)

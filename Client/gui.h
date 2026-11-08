@@ -45,3 +45,4 @@ bool GuiTakeLesorubCommand(std::string& command);
 void GuiUpdateTaxiState(std::string_view key, std::string_view value);
 void GuiResetTaxiState();
 bool GuiTakeTaxiCommand(std::string& command);
+void GuiPushToast(std::string_view title, std::string_view message, std::string_view type = "info", float durationSec = 3.8f);
