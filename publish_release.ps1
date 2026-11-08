@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$Version = "1.8.2",
     [string]$Title = "ASHES v$Version (Taxi Profile Startup Toggles Fix)",
     [string]$Notes = "Release v$($Version) - all Taxi profile toggles and coordinate clicker start disabled by default to prevent triggering hotkeys during login, plus bugfixes.",

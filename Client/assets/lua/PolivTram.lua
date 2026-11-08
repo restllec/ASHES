@@ -25,8 +25,8 @@ local api = {
 }
 
 local STOP_DISTANCE = 3
-local STOP_WAIT = 1800
-local DOOR_WAIT = 1500 -- стоянка на метке, мс
+local STOP_WAIT = 0
+local DOOR_WAIT = 500 -- стоянка на метке, мс
 local KEY_PRESS_TIME = 150
 local TICK = 50
 local EXIT_LEFT_TIME = 3500
@@ -35,20 +35,34 @@ local NEXT_CYCLE_DELAY = 2000     -- пауза перед новым трудо
 local MAX_HIRE_RETRIES = 3        -- повторы трудоустройства между циклами, если не посадило
 local hireRetries = 0
 
--- Торможение: таблица тормозного пути из TramBot (профиль Прива-7, модель 583).
--- Ключ — скорость в единицах getTrainSpeed, значение — путь до полной остановки при зажатом S, м.
+-- Профили торможения скопированы из TramBot.lua; расстояния в метрах.
 local BRAKE_SPEEDS = { 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65 }
-local BRAKE_DISTS  = { 2.74, 5.67, 9.98, 15.49, 22.18, 30.00, 39.15, 49.21, 60.46, 60.44, 60.48, 60.45 }
+local BRAKE_PROFILES = {
+    privolzhsk = { 2.74, 5.67, 9.98, 15.49, 22.18, 30.00, 39.15, 49.21, 60.46, 60.44, 60.48, 60.45 },
+    neva100 = { 4.16, 9.28, 16.36, 25.37, 36.27, 49.01, 63.58, 79.91, 98.07, 98.01, 98.08, 98.05 },
+    mirka3_gray = { 2.61, 5.65, 10.03, 15.47, 22.16, 30.02, 39.03, 49.20, 60.46, 60.45, 60.44, 60.45 },
+    mirka8_gray = { 3.36, 7.51, 13.18, 20.47, 29.28, 39.67, 51.46, 64.75, 79.47, 79.50, 79.48, 79.46 },
+    mirka3_red = { 2.74, 5.67, 9.98, 15.49, 22.18, 30.00, 39.15, 49.21, 60.46, 60.44, 60.48, 60.45 },
+    mirka8_red = { 2.53, 5.64, 9.99, 15.56, 22.16, 30.04, 39.02, 49.17, 60.49, 60.49, 60.50, 60.32 },
+    mirka3_blue = { 2.56, 5.65, 9.97, 15.48, 22.18, 30.05, 39.02, 49.19, 60.48, 60.49, 60.48, 60.46 },
+    mirka8_blue_pair = { 3.37, 7.47, 13.17, 20.46, 29.27, 39.62, 51.45, 64.79, 79.46, 79.48, 79.49, 79.48 },
+    mirka8_blue_single = { 2.59, 5.64, 9.96, 15.44, 22.11, 30.26, 38.99, 49.22, 60.36, 60.38, 60.39, 60.40 },
+    priva_611 = { 2.66, 5.65, 9.96, 15.46, 22.16, 30.03, 39.05, 49.22, 60.49, 60.43, 60.44, 60.44 },
+    priva_604 = { 2.61, 5.65, 9.99, 15.50, 22.19, 30.05, 39.05, 49.20, 60.65, 60.65, 60.55, 60.48 },
+}
+local activeBrakeProfile = BRAKE_PROFILES.privolzhsk
 local brakeDistance = 2 -- запас (м) к тормозному пути (1–15), меняется в панели (в TramBot у маркера запас 2 м)
 local CREEP_SPEED = 0.03 -- если почти встали, не доехав до метки — подталкиваем на W
 local autoDistance = true
 local distanceMode = 2 -- 1: 1 ваг (~18м), 2: 2 ваг (~36м), 3: 3 ваг (~54м)
+local distanceHold = false
 
 -- Маршрут: { позиция на пути, тип, состояние }
 --   "marker"  — остановка (стоим DOOR_WAIT)
 --   "traffic" — светофор: едем, если getTrafficLightState() == состояние, иначе стоим и ждём
 -- Записывается через stops_recorder.lua
-local stops = {
+local ROUTES = {
+    current = {
     -- остановка 1
     { 6487.3852539062,  "marker",  "228" },
 
@@ -84,7 +98,93 @@ local stops = {
 
     -- остановка 4 (конец цикла)
     { 4647.869140625,   "marker",  "228" }, -- +4 м вперёд от исходной 4643.87
+    },
+    mirny = {
+        { 108.39768981934,  "traffic", "0" },
+        { 302.02429199219,  "traffic", "3" },
+        { 583.02099609375,  "marker",  "228" },
+        { 594.45471191406,  "traffic", "3" },
+        { 875.43237304688,  "traffic", "0" },
+        { 1377.5609130859,  "traffic", "0" },
+        { 3915.1696777344,  "marker",  "228" },
+        { 6431.6264648438,  "traffic", "0" },
+        { 6929.5913085938,  "traffic", "0" },
+        { 7402.6162109375,  "marker",  "228" },
+        { 8051.578125,      "marker",  "228" }, -- +4 м вперёд от последней метки
+    },
+    nevsky = {
+        { 3283.8566894531,  "traffic", "3" },
+        { 4694.982421875,   "traffic", "3" },
+        { 4893.3442382812,  "marker",  "228" },
+        { 4955.994140625,   "traffic", "3" },
+        { 5213.7729492188,  "traffic", "3" },
+        { 5307.2172851562,  "traffic", "3" },
+        { 5621.7250976562,  "traffic", "0" },
+        { 6202.3178710938,  "traffic", "0" },
+        { 6558.4243164062,  "traffic", "3" },
+        { 6840.1674804688,  "marker",  "228" },
+        { 7216.3764648438,  "traffic", "3" },
+        { 7574.3388671875,  "traffic", "0" },
+        { 8162.9995117188,  "traffic", "0" },
+        { 8458.2763671875,  "traffic", "0" },
+        { 8720.7685546875,  "traffic", "3" },
+        { 9052.3740234375,  "traffic", "3" },
+        { 9266.984375,      "traffic", "3" },
+        { 9657.6708984375,  "marker",  "228" },
+        { 9862.5625,        "traffic", "3" },
+        { 10087.12890625,   "traffic", "3" },
+        { 10420.078125,     "traffic", "3" },
+        { 10665.662109375,  "traffic", "3" },
+        { 46.816543579102,  "traffic", "3" },
+        { 302.20642089844,  "traffic", "3" },
+        { 392.16604614258,  "marker",  "228" },
+        { 564.005859375,    "traffic", "3" },
+        { 1967.1325683594,  "traffic", "3" },
+        { 2183.2033691406,  "marker",  "228" }, -- +4 м вперёд от последней метки
+    },
 }
+
+local routeNames = { current = "Приволжск", mirny = "Мирный", nevsky = "Невский" }
+local routeIds = { "current", "mirny", "nevsky" }
+local routeJobs = {
+    current = { depot = 1, line = 5 },
+    mirny = { depot = 2, line = 5 },
+    nevsky = { depot = 3, line = 5 },
+}
+local selectedRoute = "current"
+local stops = ROUTES[selectedRoute]
+
+local function selectBrakeProfile(vehicle)
+    local model = isElement(vehicle) and getElementModel(vehicle)
+    local profile, profileName
+    if model == 476 then
+        profile, profileName = BRAKE_PROFILES.neva100, "Нева-100"
+    elseif model == 572 then
+        profile = selectedRoute == "mirny" and BRAKE_PROFILES.mirka3_gray or BRAKE_PROFILES.mirka8_gray
+        profileName = selectedRoute == "mirny" and "Мирка-3 серая" or "Мирка-8 серая"
+    elseif model == 577 then
+        profile = selectedRoute == "mirny" and BRAKE_PROFILES.mirka3_red or BRAKE_PROFILES.mirka8_red
+        profileName = selectedRoute == "mirny" and "Мирка-3 красная" or "Мирка-8 красная"
+    elseif model == 18593 then
+        local towed = getVehicleTowedByVehicle(vehicle)
+        if selectedRoute == "mirny" then
+            profile = towed and BRAKE_PROFILES.mirka8_blue_pair or BRAKE_PROFILES.mirka8_blue_single
+            profileName = towed and "Мирка-8 сине-зелёная, 2 вагона" or "Мирка-8 сине-зелёная"
+        else
+            profile, profileName = BRAKE_PROFILES.mirka3_blue, "Мирка-3 сине-зелёная"
+        end
+    elseif model == 583 then
+        profile, profileName = BRAKE_PROFILES.privolzhsk, "Прива-7"
+    elseif model == 611 then
+        profile, profileName = BRAKE_PROFILES.priva_611, "Прива-7 тип 2"
+    elseif model == 604 then
+        profile, profileName = BRAKE_PROFILES.priva_604, "Прива-2/8"
+    else
+        profile, profileName = BRAKE_PROFILES.privolzhsk, "Прива-7 (по умолчанию)"
+    end
+    activeBrakeProfile = profile
+    notify("Профиль торможения: " .. profileName .. ", модель " .. tostring(model or "?"))
+end
 
 -- Подготовка после посадки в трамвай: пауза -> свет (L) -> поливалка путей (2) -> движение
 local PREP_DELAY_MIN = 3000   -- пауза после посадки, мс
@@ -174,6 +274,32 @@ end
 local function setBrakeDistance(value)
     value = tonumber(value) or 10
     brakeDistance = math.max(1, math.min(15, math.floor(value)))
+end
+
+local function setDistanceMode(value)
+    distanceMode = math.max(1, math.min(3, math.floor(tonumber(value) or 2)))
+    notify("Дистанция: " .. tostring(distanceMode) .. " вагон(а)")
+end
+
+local function setRoute(routeId)
+    if running or not ROUTES[routeId] then return false end
+    selectedRoute = routeId
+    stops = ROUTES[routeId]
+    local vehicle = getPedOccupiedVehicle(localPlayer)
+    if isElement(vehicle) and getVehicleType(vehicle) == "Train" then
+        selectBrakeProfile(vehicle)
+    elseif routeId == "nevsky" then
+        activeBrakeProfile = BRAKE_PROFILES.neva100
+    elseif routeId == "mirny" then
+        activeBrakeProfile = BRAKE_PROFILES.mirka3_red
+    else
+        activeBrakeProfile = BRAKE_PROFILES.privolzhsk
+    end
+    stopIndex = 1
+    phase = "idle"
+    lastPointDistance, lastPointIndex = nil, nil
+    notify("Маршрут: " .. routeNames[routeId])
+    return true
 end
 
 local function setTargetCycles(value)
@@ -494,18 +620,19 @@ end
 -- Тормозной путь по таблице TramBot (линейная интерполяция, как brakeDistance() в TramBot)
 local function tableBrakeDistance(speedRaw)
     local speed = math.abs(tonumber(speedRaw) or 0)
+    local distances = activeBrakeProfile
     if speed <= 0 then return 0 end
     if speed <= BRAKE_SPEEDS[1] then
-        return BRAKE_DISTS[1] * speed / BRAKE_SPEEDS[1]
+        return distances[1] * speed / BRAKE_SPEEDS[1]
     end
     for i = 2, #BRAKE_SPEEDS do
         if speed <= BRAKE_SPEEDS[i] then
             local s0, s1 = BRAKE_SPEEDS[i - 1], BRAKE_SPEEDS[i]
-            local d0, d1 = BRAKE_DISTS[i - 1], BRAKE_DISTS[i]
+            local d0, d1 = distances[i - 1], distances[i]
             return d0 + (speed - s0) * (d1 - d0) / (s1 - s0)
         end
     end
-    return BRAKE_DISTS[#BRAKE_DISTS]
+    return distances[#distances]
 end
 
 -- С какого расстояния начинать тормозить: тормозной путь TramBot + запас из панели
@@ -554,15 +681,43 @@ local function movementTick()
     if autoDistance then
         local aheadDist = checkTrainDistance()
         if aheadDist then
-            local distCoast = (distanceMode == 1 and 20) or (distanceMode == 3 and 56) or 38
-            local distBrake = (distanceMode == 1 and 15) or (distanceMode == 3 and 44) or 28
-            if aheadDist <= distBrake then
-                keyUp("W")
-                keyDown("S")
-                return
-            elseif aheadDist <= distCoast then
+            -- Целевой зазор: примерно длина одного/двух/трёх вагонов.
+            -- Тормозим до него заранее, учитывая текущий тормозной путь.
+            local safeGap = (distanceMode == 1 and 18) or (distanceMode == 3 and 54) or 36
+            local brakePath = tableBrakeDistance(getSpeed() or 0)
+            local brakeStart = safeGap + brakePath + 3
+            local coastStart = safeGap + 10
+
+            if aheadDist <= safeGap then
+                -- Держим состав неподвижно только пока впереди действительно стоит поезд.
+                distanceHold = true
                 keyUp("W")
                 keyUp("S")
+                setSpeed(0)
+                return
+            elseif aheadDist <= brakeStart then
+                -- Плавно снижаем скорость по оставшемуся зазору, не включая S.
+                -- S на трамвае может дать задний ход, поэтому ограничиваем скорость напрямую.
+                local currentSpeed = math.abs(getSpeed() or 0)
+                local availableGap = math.max(0, aheadDist - safeGap)
+                local brakingRatio = math.min(1, availableGap / math.max(1, brakePath + 3))
+                local targetSpeed = currentSpeed * brakingRatio
+                keyUp("W")
+                keyUp("S")
+                if targetSpeed < currentSpeed - 0.01 then
+                    setSpeed(math.max(0.02, targetSpeed))
+                end
+                return
+            elseif aheadDist <= coastStart then
+                -- Накат: тяга отпущена, но поезд не тормозим резко.
+                keyUp("W")
+                keyUp("S")
+                return
+            elseif distanceHold then
+                -- Передний поезд ушёл: снимаем удержание и снова трогаемся вперёд.
+                distanceHold = false
+                keyUp("S")
+                keyDown("W")
                 return
             end
         end
@@ -751,7 +906,9 @@ local function acceptJob(hire)
             return
         end
 
-        -- как в TramBot: Tram:onJobAccepted(root province_tram, depot, line)
+        -- Для каждого маршрута используется своё трудоустройство.
+        local job = routeJobs[selectedRoute] or { depot = HIRE_ARG_1, line = HIRE_ARG_2 }
+        HIRE_ARG_1, HIRE_ARG_2 = job.depot, job.line
         local ok, err = pcall(api.triggerServerEvent, HIRE_EVENT, root, HIRE_ARG_1, HIRE_ARG_2)
         if not ok then
             failBot("не удалось отправить " .. HIRE_EVENT .. ": " .. tostring(err))
@@ -832,6 +989,10 @@ function startJTU()
     end
 
     train = nil
+    local vehicle = getPedOccupiedVehicle(localPlayer)
+    if isElement(vehicle) and getVehicleType(vehicle) == "Train" then
+        selectBrakeProfile(vehicle)
+    end
     stopIndex = 1
     phase = "starting"
     paused = false
@@ -915,7 +1076,7 @@ local ui = {
     x = 0,
     y = 0,
     w = 440,
-    h = 571,
+    h = 700,
     dragging = false,
     dragX = 0,
     dragY = 0,
@@ -978,7 +1139,7 @@ local function isInside(mx, my, x, y, w, h)
 end
 
 local function renderJTU()
-    if true then return end
+    return
 
     sw, sh = guiGetScreenSize()
 
@@ -1034,8 +1195,21 @@ local function renderJTU()
         roundedRect(barX, barY, math.max(4, barW * progress / 100), barH, 3, purple)
     end
 
+    -- Route selector
+    local routeY = ui.y + 275
+    roundedRect(ui.x + 18, routeY, ui.w - 36, 42, 9, card)
+    drawText("МАРШРУТ", ui.x + 30, routeY + 3, 100, 18, muted, 0.68, "left", "center", "default-bold")
+    drawText(routeNames[selectedRoute], ui.x + 130, routeY + 3, 135, 18, white, 0.82, "left", "center", "default-bold")
+    drawButton(ui.x + 278, routeY + 7, 60, 28, "‹", purpleSoft, not running)
+    drawButton(ui.x + 346, routeY + 7, 60, 28, ">", purpleSoft, not running)
+    local routePosition = 1
+    for i, id in ipairs(routeIds) do
+        if id == selectedRoute then routePosition = i break end
+    end
+    drawText(tostring(routePosition) .. "/" .. tostring(#routeIds), ui.x + 338, routeY + 3, 8, 18, muted, 0.6, "center", "center", "default")
+
     -- Current speed only; no speed limit
-    local speedY = ui.y + 275
+    local speedY = ui.y + 330
     roundedRect(ui.x + 18, speedY, 190, 62, 9, card)
     roundedRect(ui.x + 223, speedY, 190, 62, 9, card)
 
@@ -1045,8 +1219,17 @@ local function renderJTU()
     drawText("ЦИКЛЫ", ui.x + 235, speedY + 8, 160, 17, muted, 0.68, "left", "center", "default-bold")
     drawText("−  " .. tostring(targetCycles) .. "  +", ui.x + 223, speedY + 27, 190, 25, purpleBright, 0.82, "center", "center", "default-bold")
 
+    -- Distance mode selector
+    local distY = ui.y + 405
+    roundedRect(ui.x + 18, distY, ui.w - 36, 40, 8, card)
+    drawText("ДИСТАНЦИЯ", ui.x + 30, distY + 2, 120, 24, muted, 0.72, "left", "center", "default-bold")
+    local distLabel = (distanceMode == 1 and "1 вагон (~18 м)") or (distanceMode == 3 and "3 вагона (~54 м)") or "2 вагона (~36 м)"
+    drawText(distLabel, ui.x + 155, distY + 2, 150, 24, white, 0.72, "center", "center", "default-bold")
+    drawButton(ui.x + 315, distY + 6, 42, 28, "−", purpleSoft, true)
+    drawButton(ui.x + 363, distY + 6, 42, 28, "+", purpleSoft, true)
+
     -- Systems
-    local indY = ui.y + 350
+    local indY = ui.y + 455
     roundedRect(ui.x + 18, indY, 190, 40, 8, card)
     roundedRect(ui.x + 223, indY, 190, 40, 8, card)
 
@@ -1062,7 +1245,7 @@ local function renderJTU()
 
     -- Last action
     -- Traffic lights mode
-    local trY = ui.y + 400
+    local trY = ui.y + 505
     roundedRect(ui.x + 18, trY, ui.w - 36, 40, 8, card)
     drawText("●  СВЕТОФОРЫ", ui.x + 30, trY + 2, 140, 24, ignoreTraffic and white or muted, 0.78, "left", "center", "default-bold")
     drawText(ignoreTraffic and "ИГНОР" or "УЧИТЫВАЮТСЯ", ui.x + 150, trY + 2, 135, 24, ignoreTraffic and white or muted, 0.72, "right", "center", "default-bold")
@@ -1072,12 +1255,12 @@ local function renderJTU()
         return "авто по МСК: 00:00–10:00 не работают" .. (h and string.format("   (сейчас %02d:%02d)", h, m) or "")
     end)(), ui.x + 30, trY + 24, 262, 13, tocolor(110, 110, 110, 255), 0.56, "left", "center", "default")
 
-    local logY = ui.y + 446
+    local logY = ui.y + 551
     roundedRect(ui.x + 18, logY, ui.w - 36, 34, 7, tocolor(14, 14, 14, 255))
     drawText("●  " .. lastLog, ui.x + 29, logY, ui.w - 58, 34, muted, 0.70, "left", "center", "default")
 
     -- Controls
-    local by = ui.y + 490
+    local by = ui.y + 595
     local bw = 125
     local bh = 42
     local bgap = 10
@@ -1086,74 +1269,13 @@ local function renderJTU()
     drawButton(ui.x + 18 + bw + bgap, by, bw, bh, paused and "▶  ПРОДОЛЖИТЬ" or "Ⅱ  ПАУЗА", purpleSoft, running)
     drawButton(ui.x + 18 + (bw + bgap) * 2, by, bw, bh, "■  СТОП", tocolor(110, 110, 110, 255), running)
 
-    drawText("F7 — панель", ui.x + 18, ui.y + 537, 120, 15, tocolor(110, 110, 110, 255), 0.65, "left", "center", "default")
-    drawText("ПРОБЕЛ — пауза", ui.x + 245, ui.y + 537, 168, 15, tocolor(110, 110, 110, 255), 0.65, "right", "center", "default")
+    drawText("F7 — панель", ui.x + 18, ui.y + 650, 120, 15, tocolor(110, 110, 110, 255), 0.65, "left", "center", "default")
+    drawText("ПРОБЕЛ — пауза", ui.x + 245, ui.y + 650, 168, 15, tocolor(110, 110, 110, 255), 0.65, "right", "center", "default")
 end
 
--- addEventHandler("onClientRender", root, renderJTU)
+-- Встроенная DX-панель отключена; управление выполняется командами и горячими клавишами.
 
-addEventHandler("onClientClick", root, function(button, state, cx, cy)
-    if button ~= "left" or state ~= "down" or not panelVisible then return end
-
-    -- Header drag
-    if isInside(cx, cy, ui.x, ui.y, ui.w, 82) then
-        ui.dragging = true
-        ui.dragX = cx - ui.x
-        ui.dragY = cy - ui.y
-        return
-    end
-
-    local speedY = ui.y + 275
-    if isInside(cx, cy, ui.x + 18, speedY, 190, 62) then
-        if cx < ui.x + 113 then
-            setBrakeDistance(brakeDistance - 1)
-        else
-            setBrakeDistance(brakeDistance + 1)
-        end
-        return
-    end
-
-    if isInside(cx, cy, ui.x + 223, speedY, 190, 62) then
-        if cx < ui.x + 318 then
-            setTargetCycles(targetCycles - 1)
-        else
-            setTargetCycles(targetCycles + 1)
-        end
-        return
-    end
-
-    -- Переключатель игнорирования светофоров
-    if isInside(cx, cy, ui.x + 295, ui.y + 406, 108, 28) then
-        ignoreTraffic = not ignoreTraffic
-        notify("Светофоры: " .. (ignoreTraffic and "игнорируем" or "учитываем") .. " (вручную)")
-        return
-    end
-
-    local by = ui.y + 490
-    local bw = 125
-    local bh = 42
-    local bgap = 10
-
-    if isInside(cx, cy, ui.x + 18, by, bw, bh) then
-        startJTU()
-    elseif isInside(cx, cy, ui.x + 18 + bw + bgap, by, bw, bh) then
-        togglePause()
-    elseif isInside(cx, cy, ui.x + 18 + (bw + bgap) * 2, by, bw, bh) then
-        stopJTU()
-    end
-end)
-
-addEventHandler("onClientCursorMove", root, function(_, _, cx, cy)
-    if not ui.dragging then return end
-    ui.x = cx - ui.dragX
-    ui.y = cy - ui.dragY
-end)
-
-addEventHandler("onClientClick", root, function(button, state)
-    if button == "left" and state == "up" then
-        ui.dragging = false
-    end
-end)
+-- Обработчики кликов и перетаскивания встроенной панели удалены.
 
 -- ============================================================
 -- НОЧНОЙ / ДНЕВНОЙ РЕЖИМ СВЕТОФОРОВ (сообщения сервера, как в TramBot)
@@ -1164,9 +1286,11 @@ addEventHandler("onClientChatMessage", root, function(message)
     if text:find("Светофоры переведены в ночной режим", 1, true) then
         ignoreTraffic = true
         log("Сервер: ночной режим, светофоры игнорируются")
+        if api.updateState then api.updateState("tramp_traffic", "1") end
     elseif text:find("Светофоры переведены в дневной режим", 1, true) then
         ignoreTraffic = false
         log("Сервер: дневной режим, светофоры учитываются")
+        if api.updateState then api.updateState("tramp_traffic", "0") end
     end
 end)
 
@@ -1233,9 +1357,7 @@ bindKey("space", "down", function()
     togglePause()
 end)
 
--- bindKey("F7", "down", function()
---     panelVisible = not panelVisible
--- end)
+-- F7 больше не используется: встроенная панель удалена.
 
 setTimer(function()
     movementTick()
@@ -1256,14 +1378,18 @@ setTimer(function()
                 setBrakeDistance(cmd:sub(13))
             elseif cmd == "tramp_traffic:1" then
                 ignoreTraffic = true
+                notify("Светофоры: игнорируем")
             elseif cmd == "tramp_traffic:0" then
                 ignoreTraffic = false
+                notify("Светофоры: учитываем")
             elseif cmd == "tramp_autodist:1" then
                 autoDistance = true
             elseif cmd == "tramp_autodist:0" then
                 autoDistance = false
             elseif cmd:sub(1, 15) == "tramp_distmode:" then
-                distanceMode = tonumber(cmd:sub(16)) or 2
+                setDistanceMode(cmd:sub(16))
+            elseif cmd:sub(1, 12) == "tramp_route:" then
+                setRoute(cmd:sub(13))
             elseif cmd == "clear_chat" then
                 if clearChatBox then clearChatBox() end
             elseif cmd == "autolights:1" then
@@ -1299,6 +1425,8 @@ setTimer(function()
         api.updateState("tramp_sprinkler", sprinklerOn and "1" or "0")
         api.updateState("tramp_autodist", autoDistance and "1" or "0")
         api.updateState("tramp_distmode", tostring(distanceMode or 2))
+        api.updateState("tramp_route", selectedRoute)
+        api.updateState("tramp_route_name", routeNames[selectedRoute])
         if running then
             api.updateState("status", phaseText())
             api.updateState("bot", "1")
