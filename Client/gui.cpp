@@ -1108,6 +1108,9 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         g_tramState.silentChat = state.silentChat;
         g_tramState.trampDistanceMode = state.trampDistanceMode;
         g_tramState.trampAutoDistance = state.trampAutoDistance;
+        const auto& initRoute = s_tramRoutes[s_selectedTramRouteIndex];
+        g_tramState.subMode = initRoute.subMode;
+        state.subMode = initRoute.subMode;
         s_settingsLoaded = true;
     }
 
@@ -1333,11 +1336,23 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + itemPad);
             if(ImGui::Selectable(r.label, isSel))
             {
+                const int prevSub = g_visibleTramState.subMode;
                 s_selectedTramRouteIndex = i;
+                {
+                    std::scoped_lock lock(g_bridgeMutex);
+                    g_tramState.subMode = r.subMode;
+                    g_visibleTramState.subMode = r.subMode;
+                    if(prevSub != r.subMode)
+                        g_tramCommands.clear();
+                }
                 SaveCurrentSettings();
                 if(r.subMode == 2 && r.key && r.key[0])
                 {
                     QueueTramCommand(std::string("tramp_route:") + r.key);
+                }
+                else if(r.subMode == 0 && r.key && r.key[0])
+                {
+                    QueueTramCommand(std::string("route:") + r.key);
                 }
             }
             if(isSel) ImGui::SetItemDefaultFocus();
@@ -1352,11 +1367,24 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     if(ImGui::Button("▶ Взять маршрут", ImVec2(takeBtnW, 0.0f)))
     {
         const auto& sel = s_tramRoutes[s_selectedTramRouteIndex];
-        if(sel.subMode == 2 && sel.key && sel.key[0])
+        if(sel.subMode == 0)
         {
-            QueueTramCommand(std::string("tramp_route:") + sel.key);
+            if(sel.key && sel.key[0])
+                QueueTramCommand(std::string("route:") + sel.key);
+            QueueTramCommand("take_route");
         }
-        QueueTramCommand("take_route");
+        else if(sel.subMode == 1)
+        {
+            QueueTramCommand("jtu_take_route");
+            QueueTramCommand("take_route");
+        }
+        else if(sel.subMode == 2)
+        {
+            if(sel.key && sel.key[0])
+                QueueTramCommand(std::string("tramp_route:") + sel.key);
+            QueueTramCommand("tramp_take_route");
+            QueueTramCommand("take_route");
+        }
     }
     ImGui::PopStyleColor(4);
 
@@ -4362,7 +4390,6 @@ void GuiUpdateTramState(std::string_view key, std::string_view value)
     else if(key == "tramp_sprinkler") g_tramState.trampSprinkler = enabled;
     else if(key == "tramp_autodist") g_tramState.trampAutoDistance = enabled;
     else if(key == "tramp_distmode") g_tramState.trampDistanceMode = std::atoi(text.c_str());
-    else if(key == "submode") g_tramState.subMode = std::atoi(text.c_str());
     else if(key == "autodist") g_tramState.autoDistance = enabled;
     else if(key == "distmode") g_tramState.distanceMode = std::atoi(text.c_str());
     else if(key == "autostop_min") g_tramState.autoStopMinutes = std::atoi(text.c_str());

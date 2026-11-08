@@ -281,6 +281,7 @@ local sessionStartTick
 local playerLevel
 local autoDistance = true
 local distanceMode = 2 -- 1: 1 вагон (~18м), 2: 2 вагона (~36м), 3: 3 вагона (~54м)
+local distanceHold = false
 local autoLights = false
 local silentChat = false
 
@@ -1260,16 +1261,37 @@ local function onBrakeRender()
     if autoDistance and isElement(train) then
         local aheadDist = checkTrainDistance()
         if aheadDist then
-            local distCoast = (distanceMode == 1 and 20) or (distanceMode == 3 and 56) or 38
-            local distBrake = (distanceMode == 1 and 15) or (distanceMode == 3 and 44) or 28
-            if aheadDist <= distBrake then
-                desiredW = false
-                desiredS = true
-                debugRate("dist_brake", 1500, string.format("Авто-дистанция: ТОРМОЗ! Состав впереди: %.1fм (порог <= %.1fм)", aheadDist, distBrake))
-            elseif aheadDist <= distCoast then
+            local safeGap = (distanceMode == 1 and 18) or (distanceMode == 3 and 54) or 36
+            local brakePath = brakeDistance(speed)
+            local brakeStart = safeGap + brakePath + 3
+            local coastStart = safeGap + 10
+
+            if aheadDist <= safeGap then
+                distanceHold = true
                 desiredW = false
                 desiredS = false
-                debugRate("dist_coast", 1500, string.format("Авто-дистанция: НАКАТ! Состав впереди: %.1fм (порог %.1f-%.1fм)", aheadDist, distBrake, distCoast))
+                setTrainSpeed(train, 0)
+                debugRate("dist_hold", 1500, string.format("Авто-дистанция: СТОП! Состав впереди: %.1fм (порог <= %.1fм)", aheadDist, safeGap))
+            elseif aheadDist <= brakeStart then
+                local currentSpeed = math.abs(speed)
+                local availableGap = math.max(0, aheadDist - safeGap)
+                local brakingRatio = math.min(1, availableGap / math.max(1, brakePath + 3))
+                local targetSpeed = currentSpeed * brakingRatio
+                desiredW = false
+                desiredS = false
+                if targetSpeed < currentSpeed - 0.01 then
+                    setTrainSpeed(train, math.max(0.02, targetSpeed))
+                end
+                debugRate("dist_brake", 1500, string.format("Авто-дистанция: СБРОС! Состав: %.1fм (порог <= %.1fм)", aheadDist, brakeStart))
+            elseif aheadDist <= coastStart then
+                desiredW = false
+                desiredS = false
+                debugRate("dist_coast", 1500, string.format("Авто-дистанция: НАКАТ! Состав впереди: %.1fм (порог <= %.1fм)", aheadDist, coastStart))
+            elseif distanceHold then
+                distanceHold = false
+                desiredS = false
+                desiredW = true
+                debugRate("dist_resume", 1500, "Авто-дистанция: состав ушёл, едем дальше")
             end
         end
     end
@@ -1676,6 +1698,8 @@ local function handleCommand(command)
         end
     elseif name == "route" then
         startJob(value)
+    elseif name == "take_route" then
+        if routeKey then startJob(routeKey) end
     elseif name == "save_marker" then
         saveRoutePoint("marker", "228")
     elseif name == "save_traffic" then

@@ -378,6 +378,27 @@ int __cdecl EmitEvent(void* lua)
 
 int __cdecl DirectTramTakeCommand(void* lua)
 {
+    const std::uintptr_t currentId = reinterpret_cast<std::uintptr_t>(lua);
+    const int currentSub = GuiGetTramSubMode();
+    if(currentSub == 0)
+    {
+        if(currentId == g_trampSession.load(std::memory_order_acquire) ||
+           currentId == g_jtuSession.load(std::memory_order_acquire))
+            return 0;
+    }
+    else if(currentSub == 1)
+    {
+        if(currentId == g_tramSession.load(std::memory_order_acquire) ||
+           currentId == g_trampSession.load(std::memory_order_acquire))
+            return 0;
+    }
+    else if(currentSub == 2)
+    {
+        if(currentId == g_tramSession.load(std::memory_order_acquire) ||
+           currentId == g_jtuSession.load(std::memory_order_acquire))
+            return 0;
+    }
+
     std::string command;
     if(!GuiTakeTramCommand(command))
         return 0;

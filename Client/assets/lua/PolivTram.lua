@@ -984,11 +984,27 @@ function startJTU()
         return
     end
 
-    train = nil
     local vehicle = getPedOccupiedVehicle(localPlayer)
     if isElement(vehicle) and getVehicleType(vehicle) == "Train" then
+        train = vehicle
         selectBrakeProfile(vehicle)
+        stopIndex = 1
+        phase = "moving"
+        paused = false
+        running = true
+        errorStopped = false
+        completedCycles = 0
+        routeStartedAt = getTickCount()
+        hireRetries = 0
+        brakeV0, brakeD0 = nil, nil
+        lastPointDistance, lastPointIndex = nil, nil
+        chatInfo("Бот запущен")
+        applyTrafficByTime(true)
+        startPreparation()
+        return
     end
+
+    train = nil
     stopIndex = 1
     phase = "starting"
     paused = false
@@ -1362,6 +1378,8 @@ setTimer(function()
         while cmd do
             if cmd == "tramp_start" or cmd == "bot:1" then
                 startJTU()
+            elseif cmd == "tramp_take_route" or cmd == "take_route" then
+                acceptJob(true)
             elseif cmd == "tramp_stop" or cmd == "bot:0" then
                 stopJTU()
             elseif cmd == "tramp_pause" then

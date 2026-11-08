@@ -432,6 +432,22 @@ function startJTU()
         return
     end
 
+    local veh = getPedOccupiedVehicle(localPlayer)
+    if isElement(veh) and getVehicleType(veh) == "Train" then
+        train = veh
+        stopIndex = 1
+        phase = "moving"
+        paused = false
+        running = true
+        errorStopped = false
+        completedCycles = 0
+        routeStartedAt = getTickCount()
+        brakeV0, brakeD0 = nil, nil
+        chatInfo("Бот запущен")
+        startPreparation()
+        return
+    end
+
     train = nil
     stopIndex = 1
     phase = "starting"
@@ -771,6 +787,8 @@ setTimer(function()
         while cmd do
             if cmd == "jtu_start" or cmd == "bot:1" then
                 startJTU()
+            elseif cmd == "jtu_take_route" or cmd == "take_route" then
+                startJob()
             elseif cmd == "jtu_stop" or cmd == "bot:0" then
                 stopJTU()
             elseif cmd == "jtu_reset_cycles" then
