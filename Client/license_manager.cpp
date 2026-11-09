@@ -237,11 +237,9 @@ namespace
             WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
         if (!hSession)
         {
-            // If offline, accept valid format provisionally or mark local valid
-            g_license.is_pro = true;
-            g_license.expire_date = "Локальная верификация";
-            g_license.status_msg = "PRO (Локальный ключ)";
-            return true;
+            g_license.is_pro = false;
+            g_license.status_msg = "Ошибка сети WinHttp";
+            return false;
         }
 
         // 3 sec timeout so UI doesn't hitch
@@ -313,24 +311,15 @@ namespace
         if (verified)
         {
             g_license.is_pro = true;
-            g_license.expire_date = serverExpires.empty() ? "Активна (Vercel)" : serverExpires.substr(0, 10);
+            g_license.expire_date = serverExpires.empty() ? "Активна (PRO)" : serverExpires.substr(0, 10);
             g_license.status_msg = "PRO (Лицензия подтверждена)";
             return true;
         }
 
-        if (!serverError.empty())
-        {
-            g_license.is_pro = false;
-            g_license.expire_date = "Отклонена";
-            g_license.status_msg = "Ошибка: " + serverError;
-            return false;
-        }
-
-        // Offline / Unreachable fallback: accept valid format key
-        g_license.is_pro = true;
-        g_license.expire_date = "Автономный режим";
-        g_license.status_msg = "PRO (Ключ принят)";
-        return true;
+        g_license.is_pro = false;
+        g_license.expire_date = "Отклонена";
+        g_license.status_msg = serverError.empty() ? "Сервер лицензий недоступен" : ("Ошибка: " + serverError);
+        return false;
     }
 }
 

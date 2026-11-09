@@ -871,7 +871,7 @@ changeBotState = function(state)
         if autoStopTimer and isTimer(autoStopTimer) then killTimer(autoStopTimer) end
         autoStopTimer = setTimer(function()
             if _STATE then
-                outputChatBox("#0037FF[JBK] #FFAA00Лимит времени (3 часа) исчерпан — автостоп.", 255, 255, 255, true)
+                outputChatBox("#0037FF[JBK] #FFAA00Лимит времени (3 часа) исчерпан.", 255, 255, 255, true)
                 pcall(changeBotState, false)
                 releaseBotControls()
             end

@@ -222,18 +222,113 @@ inline bool ValidateKey(State& state, const std::string& key)
         return false;
     }
 
-    if ((key.rfind("ASHES-PRO-", 0) == 0 && key.size() >= 14) ||
-        (key.rfind("DF-PRO-", 0) == 0 && key.size() >= 12))
+    if (state.hwid.empty())
+    {
+        state.hwid = GenerateHWID(state.mac);
+    }
+
+    if ((key.rfind("ASHES-PRO-", 0) != 0 || key.size() < 14) &&
+        (key.rfind("DF-PRO-", 0) != 0 || key.size() < 12))
+    {
+        state.is_pro = false;
+        state.expire_date = "Не активирована";
+        state.status_msg = "Неверный формат ключа";
+        return false;
+    }
+
+    HINTERNET hSession = WinHttpOpen(L"ASHES-Loader/1.0",
+        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession)
+    {
+        state.is_pro = false;
+        state.expire_date = "Ошибка сети";
+        state.status_msg = "Сетевая ошибка WinHttp";
+        return false;
+    }
+
+    WinHttpSetTimeouts(hSession, 3000, 4000, 5000, 5000);
+
+    HINTERNET hConnect = WinHttpConnect(hSession, L"ashes-licensing.vercel.app", INTERNET_DEFAULT_HTTPS_PORT, 0);
+    bool verified = false;
+    std::string serverError;
+    std::string serverExpires;
+
+    if (hConnect)
+    {
+        HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", L"/api/check_license",
+            nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+        if (hRequest)
+        {
+            std::string jsonBody = "{\"key\":\"" + key + "\",\"hwid\":\"" + state.hwid + "\"}";
+            const wchar_t* headers = L"Content-Type: application/json\r\n";
+            if (WinHttpSendRequest(hRequest, headers, static_cast<DWORD>(-1L),
+                const_cast<char*>(jsonBody.data()), static_cast<DWORD>(jsonBody.size()),
+                static_cast<DWORD>(jsonBody.size()), 0) && WinHttpReceiveResponse(hRequest, nullptr))
+            {
+                DWORD statusCode = 0;
+                DWORD size = sizeof(statusCode);
+                WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                    WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &size, WINHTTP_NO_HEADER_INDEX);
+                if (statusCode == 200)
+                {
+                    std::string response;
+                    DWORD bytesAvailable = 0;
+                    while (WinHttpQueryDataAvailable(hRequest, &bytesAvailable) && bytesAvailable > 0)
+                    {
+                        std::vector<char> buffer(bytesAvailable + 1);
+                        DWORD bytesRead = 0;
+                        if (WinHttpReadData(hRequest, buffer.data(), bytesAvailable, &bytesRead) && bytesRead > 0)
+                        {
+                            response.append(buffer.data(), bytesRead);
+                        }
+                    }
+
+                    if (response.find("\"success\":true") != std::string::npos && response.find("\"pro\":true") != std::string::npos)
+                    {
+                        verified = true;
+                        const auto expPos = response.find("\"expires_at\":\"");
+                        if (expPos != std::string::npos)
+                        {
+                            const auto expEnd = response.find("\"", expPos + 14);
+                            if (expEnd != std::string::npos)
+                                serverExpires = response.substr(expPos + 14, expEnd - (expPos + 14));
+                        }
+                    }
+                    else
+                    {
+                        const auto errPos = response.find("\"error\":\"");
+                        if (errPos != std::string::npos)
+                        {
+                            const auto errEnd = response.find("\"", errPos + 9);
+                            if (errEnd != std::string::npos)
+                                serverError = response.substr(errPos + 9, errEnd - (errPos + 9));
+                        }
+                        if (serverError.empty())
+                            serverError = "Лицензия не подтверждена";
+                    }
+                }
+                else
+                {
+                    serverError = "HTTP " + std::to_string(statusCode);
+                }
+            }
+            WinHttpCloseHandle(hRequest);
+        }
+        WinHttpCloseHandle(hConnect);
+    }
+    WinHttpCloseHandle(hSession);
+
+    if (verified)
     {
         state.is_pro = true;
-        state.expire_date = "Активна (PRO)";
+        state.expire_date = serverExpires.empty() ? "Активна (PRO)" : serverExpires.substr(0, 10);
         state.status_msg = "PRO (Лицензия подтверждена)";
         return true;
     }
 
     state.is_pro = false;
-    state.expire_date = "Не активирована";
-    state.status_msg = "Неверный ключ (требуется ASHES-PRO-...)";
+    state.expire_date = "Отклонена";
+    state.status_msg = serverError.empty() ? "Сервер лицензий недоступен" : serverError;
     return false;
 }
 }

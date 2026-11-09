@@ -252,7 +252,16 @@ local botEnabled = false
 local ignoreTraffic = false
 local debugEnabled = false
 local sirenEnabled = true
-local forceStopper = false
+local forceStopper = true
+local dtpReaction = 0
+local dtpSiren = true
+local dtpPauseUntil = 0
+local rayMode = 0
+local seeVehiclesAndPeds = true
+local sirenBlock20s = true
+local blockStartTick = 0
+local passengerAlert = false
+local ignoreNearChat = false
 local passengerAlerted = false
 local lastCollisionTick = 0
 local collisionContacts = setmetatable({}, {__mode="k"})
@@ -912,21 +921,31 @@ local function onVehicleCollision(collider)
     if previous and now - previous < 1500 then
         return
     end
-    debugOutput(string.format("Новый контакт ДТП: type=%s, element=%s, siren=%s",
-        tostring(kind), tostring(collider), tostring(sirenEnabled)))
-    if not sirenEnabled then
-        debugOutput("ДТП: сирена отключена в настройках")
-        return
+    debugOutput(string.format("Новый контакт ДТП: type=%s, element=%s, siren=%s, reaction=%d",
+        tostring(kind), tostring(collider), tostring(sirenEnabled), dtpReaction))
+
+    if dtpSiren and sirenEnabled then
+        local remaining = 30000 - (now - lastCollisionTick)
+        if lastCollisionTick == 0 or remaining <= 0 then
+            lastCollisionTick = now
+            api.alert()
+        end
     end
-    local remaining = 30000 - (now - lastCollisionTick)
-    if lastCollisionTick ~= 0 and remaining > 0 then
-        debugOutput(string.format("ДТП: глобальный cooldown, осталось %d мс", remaining))
-        return
+
+    if dtpReaction == 1 then
+        notify("ДТП: Аварийная остановка бота!", true)
+        stopBot("Аварийная остановка: ДТП")
+    elseif dtpReaction == 0 then
+        notify("ДТП: Остановка на 6 секунд...", true)
+        dtpPauseUntil = now + 6000
+        if isElement(train) then
+            setTrainSpeed(train, 0)
+            setDriveKey("W", false, true)
+            setDriveKey("S", true, true)
+        end
+    else
+        notify("Предупреждение: Столкновение (ДТП)!", true)
     end
-    lastCollisionTick = now
-    notify("Бот попал в ДТП!", true)
-    local played = api.alert()
-    debugOutput("ДТП: вызов сирены вернул " .. tostring(played == true))
 end
 
 local function extractId(text)
@@ -953,10 +972,10 @@ local function onChatMessage(text, red, green, blue, messageType)
             local x, y, z = getElementPosition(player)
             local lx, ly, lz = getElementPosition(localPlayer)
             local distance = getDistanceBetweenPoints3D(x, y, z, lx, ly, lz)
-            if distance <= 50 then
+            if distance <= 50 and not ignoreNearChat then
                 notify(string.format("Игрок %s рядом: %.1f м, dimension %s",
                     getPlayerNametagText(player), distance, tostring(getElementDimension(player))), true)
-                api.alert()
+                if sirenEnabled then api.alert() end
             end
             break
         end
@@ -1045,22 +1064,57 @@ local function checkTrainDistance()
     local fwdX = -math.sin(rad)
     local fwdY = math.cos(rad)
 
+    local curSpeed = math.abs(getTrainSpeed(train) or 0)
+    local maxScanDist = (rayMode == 0) and math.max(35, math.min(75, 25 + curSpeed * 65)) or 45
+
     local closestDist = 999
     local found = false
     local vehicles = getElementsByType("vehicle")
     for _, veh in ipairs(vehicles) do
-        if veh ~= train and isElement(veh) and getVehicleType(veh) == "Train" then
-            local tx, ty, tz = getElementPosition(veh)
-            local dx = tx - myX
-            local dy = ty - myY
-            local dist = math.sqrt(dx * dx + dy * dy)
-            if dist <= 65 and dist > 1.0 then
-                local dot = dx * fwdX + dy * fwdY
-                if dot > 0 then
-                    local _, _, tgtRotZ = getElementRotation(veh)
-                    local diffAngle = math.abs((myRotZ - tgtRotZ + 180) % 360 - 180)
-                    if diffAngle <= 60 then
-                        if dist < closestDist then
+        if veh ~= train and isElement(veh) then
+            local isTrain = getVehicleType(veh) == "Train"
+            if isTrain or seeVehiclesAndPeds then
+                local tx, ty, tz = getElementPosition(veh)
+                local dx = tx - myX
+                local dy = ty - myY
+                local dist = math.sqrt(dx * dx + dy * dy)
+                if dist <= maxScanDist and dist > 1.0 then
+                    local dot = dx * fwdX + dy * fwdY
+                    if dot > 0 then
+                        local perp = math.abs(dx * (-fwdY) + dy * fwdX)
+                        local allowedPerp = isTrain and 3.5 or 2.8
+                        if perp <= allowedPerp then
+                            if isTrain then
+                                local _, _, tgtRotZ = getElementRotation(veh)
+                                local diffAngle = math.abs((myRotZ - tgtRotZ + 180) % 360 - 180)
+                                if diffAngle <= 60 and dist < closestDist then
+                                    closestDist = dist
+                                    found = true
+                                end
+                            elseif dist < closestDist then
+                                closestDist = dist
+                                found = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if seeVehiclesAndPeds and closestDist > 15 then
+        local peds = getElementsByType("player")
+        for _, ped in ipairs(peds) do
+            if ped ~= localPlayer and isElement(ped) and not isPedInVehicle(ped) then
+                local px, py, pz = getElementPosition(ped)
+                local dx = px - myX
+                local dy = py - myY
+                local dist = math.sqrt(dx * dx + dy * dy)
+                if dist <= maxScanDist and dist > 1.0 then
+                    local dot = dx * fwdX + dy * fwdY
+                    if dot > 0 then
+                        local perp = math.abs(dx * (-fwdY) + dy * fwdX)
+                        if perp <= 2.2 and dist < closestDist then
                             closestDist = dist
                             found = true
                         end
@@ -1069,6 +1123,7 @@ local function checkTrainDistance()
             end
         end
     end
+
     if found then
         return closestDist
     end
@@ -1095,6 +1150,19 @@ local function onBrakeRender()
         return
     end
 
+    if dtpPauseUntil > 0 then
+        local nowTick = getTickCount()
+        if nowTick < dtpPauseUntil then
+            setTrainSpeed(train, 0)
+            setDriveKey("W", false)
+            setDriveKey("S", false)
+            return
+        else
+            dtpPauseUntil = 0
+            notify("ДТП: продолжение движения")
+        end
+    end
+
     local position = getTrainPosition(train)
     local speed = math.abs(getTrainSpeed(train) or 0)
     if not position then
@@ -1105,7 +1173,7 @@ local function onBrakeRender()
     local desiredS = false
     local now = getTickCount()
 
-    if now - lastPassengerScan >= 1000 then
+    if passengerAlert and now - lastPassengerScan >= 1000 then
         scanPassengers()
         lastPassengerScan = now
     end
@@ -1271,8 +1339,19 @@ local function onBrakeRender()
                 desiredW = false
                 desiredS = false
                 setTrainSpeed(train, 0)
-                debugRate("dist_hold", 1500, string.format("Авто-дистанция: СТОП! Состав впереди: %.1fм (порог <= %.1fм)", aheadDist, safeGap))
+                if blockStartTick == 0 then
+                    blockStartTick = now
+                elseif sirenBlock20s and (now - blockStartTick >= 20000) then
+                    local sirenCooldown = now - (lastBlockSirenTick or 0)
+                    if sirenCooldown >= 10000 then
+                        lastBlockSirenTick = now
+                        notify("Путь перекрыт более 20 с!", true)
+                        if sirenEnabled then api.alert() end
+                    end
+                end
+                debugRate("dist_hold", 1500, string.format("Авто-дистанция: СТОП! Препятствие: %.1fм (порог <= %.1fм)", aheadDist, safeGap))
             elseif aheadDist <= brakeStart then
+                blockStartTick = 0
                 local currentSpeed = math.abs(speed)
                 local availableGap = math.max(0, aheadDist - safeGap)
                 local brakingRatio = math.min(1, availableGap / math.max(1, brakePath + 3))
@@ -1404,21 +1483,17 @@ local function startBot()
     sessionStartTick = getTickCount()
     playerLevel = getPlayerLevel()
     if autoStopMinutes and autoStopMinutes > 0 then
-        local hoursText = string.format("%d мин", autoStopMinutes)
-        if autoStopMinutes % 60 == 0 then
-            hoursText = string.format("%d ч", autoStopMinutes / 60)
-        end
-        notify(string.format("Бот включен (автостоп: %s, LVL: %s).", hoursText, tostring(playerLevel)))
+        notify(string.format("Бот включен (LVL: %s).", tostring(playerLevel)))
         if autoStopTimer and isTimer(autoStopTimer) then
             killTimer(autoStopTimer)
         end
         autoStopTimer = setTimer(function()
             if botEnabled then
-                stopBot(string.format("Лимит времени (%s) исчерпан — автостоп.", hoursText))
+                stopBot("Время смены завершено.")
             end
         end, autoStopMinutes * 60 * 1000, 1)
     else
-        notify("Бот включен (автостоп: без ограничений, LVL: " .. tostring(playerLevel) .. ").")
+        notify("Бот включен (LVL: " .. tostring(playerLevel) .. ").")
         if autoStopTimer and isTimer(autoStopTimer) then
             killTimer(autoStopTimer)
             autoStopTimer = nil
@@ -1431,8 +1506,15 @@ local function startBot()
 end
 
 local function onForceStop()
-    if forceStopper and botEnabled and isElement(train) then
+    if forceStopper and isElement(train) then
         setTrainSpeed(train, 0)
+        setDriveKey("W", false, true)
+        setDriveKey("S", true, true)
+        if botEnabled then
+            stopBot("Экстренная остановка (Пробел)")
+        else
+            notify("Экстренное торможение (Пробел)", true)
+        end
     end
 end
 
@@ -1675,8 +1757,22 @@ local function handleCommand(command)
         end
     elseif name == "siren" then
         sirenEnabled = value == "1"
-    elseif name == "force" then
+    elseif name == "force" or name == "space_stop" then
         forceStopper = value == "1"
+    elseif name == "dtp_reaction" then
+        dtpReaction = tonumber(value) or 0
+    elseif name == "siren_dtp" then
+        dtpSiren = value == "1"
+    elseif name == "ray_mode" then
+        rayMode = tonumber(value) or 0
+    elseif name == "see_peds_cars" then
+        seeVehiclesAndPeds = value == "1"
+    elseif name == "siren_block_20s" then
+        sirenBlock20s = value == "1"
+    elseif name == "passenger_alert" then
+        passengerAlert = value == "1"
+    elseif name == "ignore_near_chat" then
+        ignoreNearChat = value == "1"
     elseif name == "autodist" then
         autoDistance = value == "1"
         api.updateState("autodist", autoDistance and "1" or "0")
@@ -1720,10 +1816,14 @@ local function handleCommand(command)
         if not played then
             notify("Не удалось запустить сирену — смотри DarkFlame.log", true)
         end
-    elseif name == "admin" then
+    elseif name == "admin" or name == "test_admin" then
+        local adminMsg = value ~= "" and tostring(value) or "Тест проверки администратора"
         if dfPushToast then
-            dfPushToast("ТРЕВОГА", "Админ крикнул: " .. tostring(value), "admin", 6.0)
+            dfPushToast("ТРЕВОГА", "Админ крикнул: " .. adminMsg, "admin", 6.0)
+        else
+            notify("Админ крикнул: " .. adminMsg, true)
         end
+        if sirenEnabled then api.alert() end
         if isElement(train) then
             setTrainSpeed(train, 0)
             debugOutput("Админ проверка: состав экстренно остановлен")

@@ -1470,15 +1470,6 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
     }
     EndCard();
 
-    // 5. Карточка «Сообщения»
-    BeginCard("##card_tram_msg", TramIcons::DrawChat, "Сообщения", "Уведомления в игровой чат");
-    if(ImGui::Checkbox("Дублировать события в чат", &s_tramEchoToChat))
-    {
-        SaveCurrentSettings();
-        QueueTramCommand(std::string("echo_chat:") + (s_tramEchoToChat ? "1" : "0"));
-    }
-    EndCard();
-
     // 6. Карточка «Прочее»
     BeginCard("##card_tram_misc", TramIcons::DrawKeyboard, "Прочее", "Дополнительные настройки");
     if(ImGui::Checkbox("Пробел: мгновенная остановка", &s_tramSpaceStop))
@@ -1608,9 +1599,9 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
             }
             else
             {
-                ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Заработано:");
+                ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "Контроль:");
                 ImGui::SameLine(0, 6.0f * scale);
-                ImGui::TextColored(ImVec4(0.98f, 0.82f, 0.30f, 1.0f), "%s р.", state.money.empty() ? "0" : state.money.c_str());
+                ImGui::TextColored(ImVec4(0.35f, 0.88f, 0.65f, 1.0f), "%s", state.bot ? "В пути" : "Готов");
             }
 
             ImGui::EndTable();
@@ -1752,6 +1743,91 @@ void DrawJbkBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::SameLine(0, 6.0f * scale);
     if(XoneButton("Лесоруб", scale, g_factoryMode == 2, segW, 26.0f)) g_factoryMode = 2;
     ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    const float contentW = ImGui::GetContentRegionAvail().x;
+    const float leftColW = std::floor((contentW - 14.0f * scale) * 0.48f);
+    const float rightColW = contentW - leftColW - 14.0f * scale;
+
+    auto BeginCard = [&](const char* id, void (*drawIcon)(ImDrawList*, ImVec2, float, ImU32), const char* title, const char* subtitle, float height = 0.0f) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(20, 20, 28, 255));
+        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 14));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * scale, 10.0f * scale));
+        ImGuiChildFlags childFlags = ImGuiChildFlags_Borders;
+        if(height == 0.0f)
+            childFlags |= ImGuiChildFlags_AutoResizeY;
+        ImGui::BeginChild(id, ImVec2(-1.0f, height), childFlags, ImGuiWindowFlags_NoScrollbar);
+        if(title && title[0])
+        {
+            ImDrawList* curDl = ImGui::GetWindowDrawList();
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            if(drawIcon)
+            {
+                drawIcon(curDl, ImVec2(p.x, p.y + 1.0f * scale), 20.0f * scale, g_Theme.AccentU32());
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 26.0f * scale);
+            }
+            ImGui::BeginGroup();
+            ImGui::TextColored(ImVec4(0.96f, 0.96f, 0.98f, 1.0f), "%s", title);
+            if(subtitle && subtitle[0])
+            {
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f * scale);
+                ImGui::TextColored(ImVec4(0.50f, 0.52f, 0.58f, 1.0f), "%s", subtitle);
+            }
+            ImGui::EndGroup();
+            ImGui::Spacing();
+        }
+    };
+
+    auto EndCard = [&]() {
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(2);
+    };
+
+    // Левая колонка (48% ширины): карточки настроек со скроллингом
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 8.0f * scale));
+    ImGui::BeginChild("##jbk_col_left", ImVec2(leftColW, -1.0f), false, ImGuiWindowFlags_NoScrollbar);
+
+    // 1. Карточка «Параметры движения»
+    BeginCard("##card_jbk_move", TramIcons::DrawRoad, "Параметры движения", "Поведение персонажа на маршруте");
+    JbkToggle("Банни-хоп (ускоренный бег)", state.bhop, "bhop");
+    JbkToggle("Живая походка (анти-бот)", state.walk, "walk");
+    JbkToggle("Строгий возврат к рельсам", state.strict, "strict");
+    ImGui::Spacing();
+    JbkInt("Скорость поворота", state.rotationSpeed, 1, 10, "rotation_speed", scale);
+    JbkInt("Длина шага, мс", state.walkDuration, 50, 5000, "walk_duration", scale);
+    JbkInt("Интервал шага, мс", state.walkInterval, 100, 10000, "walk_interval", scale);
+    EndCard();
+
+    // 2. Карточка «Безопасность и защита»
+    BeginCard("##card_jbk_sec", TramIcons::DrawBell, "Безопасность и защита", "Авто-стоп и реакция на админов");
+    JbkToggle("Стоп при появлении админа", state.stopOnAdmin, "stop_admin");
+    JbkToggle("Сирена тревоги при проверке", state.siren, "siren");
+    JbkToggle("Автоотключение (3 часа)", state.autoDisable, "auto_disable");
+    JbkToggle("Удар по админу", state.adminHit, "admin_hit");
+    ImGui::Spacing();
+    JbkFloat("Радиус удара", state.hitRadius, 1.0f, 100.0f, "hit_radius", scale);
+    JbkInt("Кулдаун удара, сек", state.hitCooldown, 1, 600, "hit_cooldown", scale);
+    EndCard();
+
+    // 3. Карточка «Защита от застреваний»
+    BeginCard("##card_jbk_stuck", TramIcons::DrawWrench, "Защита от застреваний", "Контроль коллизий и сбоев");
+    JbkFloat("Порог застревания, сек", state.stuckDistance, 0.1f, 20.0f, "stuck_distance", scale);
+    JbkInt("Таймер ожидания, мс", state.stuckTime, 250, 30000, "stuck_time", scale);
+    JbkInt("Попыток выхода", state.stuckMax, 1, 20, "stuck_max", scale);
+    JbkInt("Авторестарт, мин", state.resumeMinutes, 1, 60, "resume_minutes", scale);
+    EndCard();
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+
+    ImGui::SameLine(0, 14.0f * scale);
+
+    // Правая колонка: Кнопка, Телеметрия, Журнал смены
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 8.0f * scale));
+    ImGui::BeginChild("##jbk_col_right", ImVec2(rightColW, -1.0f), false, ImGuiWindowFlags_NoScrollbar);
 
     const bool isRunning = state.bot;
     const char* actionBtnLabel = isRunning ? " ⏹  ОСТАНОВИТЬ БОТА (ЖБК)" : " ⏻  ЗАПУСТИТЬ БОТА (ЖБК)";
@@ -1764,69 +1840,62 @@ void DrawJbkBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, actionBtnActive);
     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f * scale);
-    if(ImGui::Button(actionBtnLabel, ImVec2(-1.0f, 38.0f * scale)))
+    if(ImGui::Button(actionBtnLabel, ImVec2(-1.0f, 40.0f * scale)))
         QueueJbkCommand(isRunning ? "bot:0" : "bot:1");
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(4);
+
+    // Карточка «Телеметрия смены»
+    BeginCard("##card_jbk_telemetry", TramIcons::DrawChart, "Телеметрия смены", "Данные работы в реальном времени");
+    ImGui::TextColored(state.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(1.0f, 0.35f, 0.25f, 1.0f),
+        state.loaded ? "● LUA ONLINE" : "● LUA OFFLINE");
+    ImGui::SameLine(0, 10.0f * scale);
+    ImGui::TextColored(isRunning ? ImVec4(0.35f, 0.88f, 0.65f, 1.0f) : ImVec4(0.70f, 0.72f, 0.78f, 1.0f),
+        "| Статус: %s", isRunning ? "В работе" : "Остановлен");
+
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Текущая задача:");
+    ImGui::SameLine(0, 6.0f * scale);
+    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "%s", state.status.empty() ? "Ожидание запуска" : state.status.c_str());
+
+    ImGui::Spacing();
+    ImGui::Separator();
     ImGui::Spacing();
 
-    ImGui::TextColored(state.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(1.0f, 0.35f, 0.25f, 1.0f),
-        state.loaded ? "[LUA ONLINE]" : "[LUA OFFLINE]");
-    ImGui::SameLine();
-    ImGui::Text("| %s | %s | Заработано: %s р.", state.bot ? "работает" : "остановлен", state.status.c_str(), state.money.c_str());
-    ImGui::Separator();
+    float boxW = (ImGui::GetContentRegionAvail().x - 6.0f * scale) * 0.5f;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(24, 27, 38, 255));
+    ImGui::BeginChild("##jbk_stat1", ImVec2(boxW, 44.0f * scale), ImGuiChildFlags_Borders);
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Режим цеха");
+    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "Формовка / ЖБК");
+    ImGui::EndChild();
 
-    if(ImGui::BeginTable("##jbk_settings", 3,
-        ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_BordersInnerV))
+    ImGui::SameLine(0, 6.0f * scale);
+    ImGui::BeginChild("##jbk_stat2", ImVec2(boxW, 44.0f * scale), ImGuiChildFlags_Borders);
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Контроль админов");
+    ImGui::TextColored(state.stopOnAdmin ? ImVec4(0.35f, 0.88f, 0.65f, 1.0f) : ImVec4(0.70f, 0.72f, 0.78f, 1.0f),
+        state.stopOnAdmin ? "Включен (Стоп)" : "Только сирена");
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    EndCard();
+
+    // Карточка «Журнал смены»
+    BeginCard("##card_jbk_log", TramIcons::DrawDoc, "Журнал смены", "Лог ключевых этапов производства", 120.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 16, 23, 255));
+    if(ImGui::BeginChild("##jbk_log_scroll", ImVec2(-1.0f, -1.0f), true))
     {
-        ImGui::TableNextColumn();
-        ImGui::SeparatorText("Основное");
-        JbkToggle("Банни-хоп", state.bhop, "bhop");
-        JbkToggle("Сирена", state.siren, "siren");
-        JbkToggle("Автоотключение", state.autoDisable, "auto_disable");
-        JbkToggle("Стоп при админе", state.stopOnAdmin, "stop_admin");
-        JbkToggle("Строгий маршрут", state.strict, "strict");
-        JbkToggle("Удар по админу", state.adminHit, "admin_hit");
-        JbkToggle("Живая походка", state.walk, "walk");
-
-        ImGui::TableNextColumn();
-        ImGui::SeparatorText("Маршрут и защита");
-        JbkInt("Скорость поворота", state.rotationSpeed, 1, 10,
-            "rotation_speed", scale);
-        JbkInt("Задержка BH, мс", state.bhopDelay, 100, 10000,
-            "bhop_delay", scale);
-        JbkFloat("Дистанция BH", state.bhopDistance, 0.0f, 100.0f,
-            "bhop_distance", scale);
-        JbkFloat("Макс. высота", state.maxZ, 0.0f, 10000.0f,
-            "max_z", scale);
-        JbkFloat("Макс. телепорт", state.maxJump, 1.0f, 500.0f,
-            "max_jump", scale);
-        JbkInt("Авторестарт, мин", state.resumeMinutes, 1, 60,
-            "resume_minutes", scale);
-        JbkFloat("Порог застревания", state.stuckDistance, 0.1f, 20.0f,
-            "stuck_distance", scale);
-        JbkInt("Таймер застревания", state.stuckTime, 250, 30000,
-            "stuck_time", scale);
-        JbkInt("Попыток выхода", state.stuckMax, 1, 20,
-            "stuck_max", scale);
-
-        ImGui::TableNextColumn();
-        ImGui::SeparatorText("Админ и движение");
-        JbkFloat("Радиус удара", state.hitRadius, 1.0f, 100.0f,
-            "hit_radius", scale);
-        JbkInt("Кулдаун удара, сек", state.hitCooldown, 1, 600,
-            "hit_cooldown", scale);
-        JbkInt("Интервал шага, мс", state.walkInterval, 100, 10000,
-            "walk_interval", scale);
-        JbkInt("Длина шага, мс", state.walkDuration, 50, 5000,
-            "walk_duration", scale);
-        JbkFloat("Мин. дистанция шага", state.walkDistance, 0.0f, 100.0f,
-            "walk_distance", scale);
-        ImGui::Spacing();
-        ImGui::TextWrapped("F5 свободна. Окно DarkFlame: Shift+R. "
-            "Все кнопки работают через нативный Lua bridge.");
-        ImGui::EndTable();
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "[Инфо] Завод железобетонных конструкций");
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "[Инфо] Горячие клавиши: Shift+R (меню)");
+        ImGui::TextColored(ImVec4(0.35f, 0.78f, 0.98f, 1.0f), "[Этап] Текущее состояние: %s", state.status.c_str());
+        if(isRunning)
+            ImGui::TextColored(ImVec4(0.35f, 0.88f, 0.65f, 1.0f), "[Движение] Автоматический цикл активен");
     }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    EndCard();
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+
     ImGui::EndChild();
     ImGui::PopStyleColor(9);
     ImGui::PopStyleVar();
@@ -1856,6 +1925,122 @@ void DrawTobaccoBot(ImVec2 position, ImVec2 size, float scale)
     if(XoneButton("Лесоруб", scale, g_factoryMode == 2, segW, 26.0f)) g_factoryMode = 2;
     ImGui::Spacing();
 
+    float contentW = ImGui::GetContentRegionAvail().x;
+    float leftColW = std::floor((contentW - 14.0f * scale) * 0.48f);
+    float rightColW = contentW - leftColW - 14.0f * scale;
+
+    auto BeginCard = [&](const char* id, void (*drawIcon)(ImDrawList*, ImVec2, float, ImU32), const char* title, const char* subtitle, float height = 0.0f) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(20, 20, 28, 255));
+        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 14));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * scale, 10.0f * scale));
+        ImGuiChildFlags childFlags = ImGuiChildFlags_Borders;
+        if(height == 0.0f)
+            childFlags |= ImGuiChildFlags_AutoResizeY;
+        ImGui::BeginChild(id, ImVec2(-1.0f, height), childFlags, ImGuiWindowFlags_NoScrollbar);
+        if(title && title[0])
+        {
+            ImDrawList* curDl = ImGui::GetWindowDrawList();
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            if(drawIcon)
+            {
+                drawIcon(curDl, ImVec2(p.x, p.y + 1.0f * scale), 20.0f * scale, g_Theme.AccentU32());
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 26.0f * scale);
+            }
+            ImGui::BeginGroup();
+            ImGui::TextColored(ImVec4(0.96f, 0.96f, 0.98f, 1.0f), "%s", title);
+            if(subtitle && subtitle[0])
+            {
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f * scale);
+                ImGui::TextColored(ImVec4(0.50f, 0.52f, 0.58f, 1.0f), "%s", subtitle);
+            }
+            ImGui::EndGroup();
+            ImGui::Spacing();
+        }
+    };
+
+    auto EndCard = [&]() {
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(2);
+    };
+
+    // Левая колонка (48% ширины): карточки настроек
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 8.0f * scale));
+    ImGui::BeginChild("##tobacco_col_left", ImVec2(leftColW, -1.0f), false, ImGuiWindowFlags_NoScrollbar);
+
+    // 1. Карточка «Параметры цеха»
+    BeginCard("##card_tob_params", TramIcons::DrawRoad, "Параметры цеха", "Настройка перемещения и склада");
+    if(ImGui::Checkbox("Бежать до склада (Sprint)", &state.sprintToStorage))
+    {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_tobaccoState.sprintToStorage = state.sprintToStorage;
+        }
+        QueueTobaccoCommand(std::string("sprint:") + (state.sprintToStorage ? "1" : "0"));
+    }
+    ImGui::Spacing();
+    ImGui::SetNextItemWidth(140.0f * scale);
+    if(ImGui::SliderInt("Скорость вращения", &state.rotationSpeed, 5, 10))
+    {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_tobaccoState.rotationSpeed = state.rotationSpeed;
+        }
+        QueueTobaccoCommand("rotation:" + std::to_string(state.rotationSpeed));
+    }
+    ImGui::Spacing();
+    if(ImGui::Button("Сбросить маршрут склада", ImVec2(-1.0f, 28.0f * scale)))
+        QueueTobaccoCommand("reset_wp");
+    EndCard();
+
+    // 2. Карточка «Безопасность и защита»
+    BeginCard("##card_tob_sec", TramIcons::DrawBell, "Безопасность и защита", "Реакция на администрацию и коллизии");
+    if(ImGui::Checkbox("Сирена при проверке / ТП", &state.siren))
+    {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_tobaccoState.siren = state.siren;
+        }
+        QueueTobaccoCommand(std::string("siren:") + (state.siren ? "1" : "0"));
+    }
+    if(ImGui::Checkbox("Автоотключение (3 часа / ТП)", &state.autoDisable))
+    {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_tobaccoState.autoDisable = state.autoDisable;
+        }
+        QueueTobaccoCommand(std::string("autodisable:") + (state.autoDisable ? "1" : "0"));
+    }
+    if(ImGui::Checkbox("Автоответчик администраторам (ИИ)", &state.autoAnswer))
+    {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_tobaccoState.autoAnswer = state.autoAnswer;
+        }
+        QueueTobaccoCommand(std::string("autoanswer:") + (state.autoAnswer ? "1" : "0"));
+    }
+    ImGui::Spacing();
+    ImGui::SetNextItemWidth(140.0f * scale);
+    if(ImGui::SliderInt("Задержка ответа, мс", &state.answerDelay, 50, 200))
+    {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_tobaccoState.answerDelay = state.answerDelay;
+        }
+        QueueTobaccoCommand("answer_delay:" + std::to_string(state.answerDelay));
+    }
+    EndCard();
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+
+    ImGui::SameLine(0, 14.0f * scale);
+
+    // Правая колонка: Кнопка, Телеметрия, Журнал смены
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 8.0f * scale));
+    ImGui::BeginChild("##tobacco_col_right", ImVec2(rightColW, -1.0f), false, ImGuiWindowFlags_NoScrollbar);
+
     const bool isRunning = state.bot;
     const char* actionBtnLabel = isRunning ? " ⏹  ОСТАНОВИТЬ БОТА (Табачка)" : " ⏻  ЗАПУСТИТЬ БОТА (Табачка)";
     const ImU32 actionBtnColor = isRunning ? IM_COL32(215, 55, 55, 255) : g_Theme.AccentU32();
@@ -1867,80 +2052,60 @@ void DrawTobaccoBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, actionBtnActive);
     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f * scale);
-    if(ImGui::Button(actionBtnLabel, ImVec2(-1.0f, 38.0f * scale)))
+    if(ImGui::Button(actionBtnLabel, ImVec2(-1.0f, 40.0f * scale)))
         QueueTobaccoCommand(isRunning ? "bot:0" : "bot:1");
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(4);
-    ImGui::Spacing();
 
+    // Карточка «Телеметрия смены»
+    BeginCard("##card_tob_telemetry", TramIcons::DrawChart, "Телеметрия смены", "Данные работы табачной фабрики");
     ImGui::TextColored(state.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(0.8f, 0.8f, 0.8f, 1.0f),
-        state.loaded ? "[LUA ONLINE]" : "[LUA STANDBY]");
-    ImGui::SameLine();
-    ImGui::Text("| %s | %s | Заработано: %s р.", state.bot ? "работает" : "остановлен", state.status.c_str(), state.money.c_str());
-    ImGui::Separator();
-
-    ImGui::Text("Заработано: %s р.", state.money.c_str());
-    ImGui::Separator();
-
-    if(ImGui::Checkbox("Бежать до склада (Sprint)", &state.sprintToStorage))
-    {
-        {
-            std::scoped_lock lock(g_bridgeMutex);
-            g_tobaccoState.sprintToStorage = state.sprintToStorage;
-        }
-        QueueTobaccoCommand(std::string("sprint:") + (state.sprintToStorage ? "1" : "0"));
-    }
-    ImGui::SameLine();
-    if(ImGui::Checkbox("Сирена при проверке/ДТП", &state.siren))
-    {
-        {
-            std::scoped_lock lock(g_bridgeMutex);
-            g_tobaccoState.siren = state.siren;
-        }
-        QueueTobaccoCommand(std::string("siren:") + (state.siren ? "1" : "0"));
-    }
-    ImGui::SameLine();
-    if(ImGui::Checkbox("Автоотключение (3 часа / ТП)", &state.autoDisable))
-    {
-        {
-            std::scoped_lock lock(g_bridgeMutex);
-            g_tobaccoState.autoDisable = state.autoDisable;
-        }
-        QueueTobaccoCommand(std::string("autodisable:") + (state.autoDisable ? "1" : "0"));
-    }
-
-    ImGui::SetNextItemWidth(120.0f * scale);
-    if(ImGui::SliderInt("Скорость вращения", &state.rotationSpeed, 5, 10))
-    {
-        {
-            std::scoped_lock lock(g_bridgeMutex);
-            g_tobaccoState.rotationSpeed = state.rotationSpeed;
-        }
-        QueueTobaccoCommand("rotation:" + std::to_string(state.rotationSpeed));
-    }
-
-    if(ImGui::Checkbox("Автоответчик администраторам (ИИ)", &state.autoAnswer))
-    {
-        {
-            std::scoped_lock lock(g_bridgeMutex);
-            g_tobaccoState.autoAnswer = state.autoAnswer;
-        }
-        QueueTobaccoCommand(std::string("autoanswer:") + (state.autoAnswer ? "1" : "0"));
-    }
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(140.0f * scale);
-    if(ImGui::SliderInt("Задержка ответа, мс", &state.answerDelay, 50, 200))
-    {
-        {
-            std::scoped_lock lock(g_bridgeMutex);
-            g_tobaccoState.answerDelay = state.answerDelay;
-        }
-        QueueTobaccoCommand("answer_delay:" + std::to_string(state.answerDelay));
-    }
+        state.loaded ? "● LUA ONLINE" : "● LUA STANDBY");
+    ImGui::SameLine(0, 10.0f * scale);
+    ImGui::TextColored(isRunning ? ImVec4(0.35f, 0.88f, 0.65f, 1.0f) : ImVec4(0.70f, 0.72f, 0.78f, 1.0f),
+        "| Статус: %s", isRunning ? "В работе" : "Остановлен");
 
     ImGui::Spacing();
-    if(ImGui::Button("Сбросить маршрут склада"))
-        QueueTobaccoCommand("reset_wp");
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Текущая задача:");
+    ImGui::SameLine(0, 6.0f * scale);
+    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "%s", state.status.empty() ? "Ожидание запуска" : state.status.c_str());
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    float boxW = (ImGui::GetContentRegionAvail().x - 6.0f * scale) * 0.5f;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(24, 27, 38, 255));
+    ImGui::BeginChild("##tob_stat1", ImVec2(boxW, 44.0f * scale), ImGuiChildFlags_Borders);
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Заработано");
+    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "%s р.", state.money.empty() ? "0" : state.money.c_str());
+    ImGui::EndChild();
+
+    ImGui::SameLine(0, 6.0f * scale);
+    ImGui::BeginChild("##tob_stat2", ImVec2(boxW, 44.0f * scale), ImGuiChildFlags_Borders);
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Режим цеха");
+    ImGui::TextColored(ImVec4(0.35f, 0.88f, 0.65f, 1.0f), "Сборка / Склад");
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    EndCard();
+
+    // Карточка «Журнал смены»
+    BeginCard("##card_tob_log", TramIcons::DrawDoc, "Журнал смены", "Лог ключевых этапов производства", 120.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 16, 23, 255));
+    if(ImGui::BeginChild("##tob_log_scroll", ImVec2(-1.0f, -1.0f), true))
+    {
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "[Инфо] Табачная фабрика: автоматизированный маршрут");
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "[Инфо] Горячие клавиши: Shift+R (меню)");
+        ImGui::TextColored(ImVec4(0.35f, 0.78f, 0.98f, 1.0f), "[Этап] Текущее состояние: %s", state.status.c_str());
+        if(isRunning)
+            ImGui::TextColored(ImVec4(0.35f, 0.88f, 0.65f, 1.0f), "[Движение] Автоматический цикл активен");
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    EndCard();
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
 
     ImGui::EndChild();
     ImGui::PopStyleColor(9);
@@ -1981,8 +2146,102 @@ void DrawWoodBot(ImVec2 position, ImVec2 size, float scale)
     if(XoneButton("Лесоруб", scale, g_factoryMode == 2, segW, 26.0f)) g_factoryMode = 2;
     ImGui::Spacing();
 
+    float contentW = ImGui::GetContentRegionAvail().x;
+    float leftColW = std::floor((contentW - 14.0f * scale) * 0.48f);
+    float rightColW = contentW - leftColW - 14.0f * scale;
+
+    auto BeginCard = [&](const char* id, void (*drawIcon)(ImDrawList*, ImVec2, float, ImU32), const char* title, const char* subtitle, float height = 0.0f) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(20, 20, 28, 255));
+        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 14));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * scale, 10.0f * scale));
+        ImGuiChildFlags childFlags = ImGuiChildFlags_Borders;
+        if(height == 0.0f)
+            childFlags |= ImGuiChildFlags_AutoResizeY;
+        ImGui::BeginChild(id, ImVec2(-1.0f, height), childFlags, ImGuiWindowFlags_NoScrollbar);
+        if(title && title[0])
+        {
+            ImDrawList* curDl = ImGui::GetWindowDrawList();
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            if(drawIcon)
+            {
+                drawIcon(curDl, ImVec2(p.x, p.y + 1.0f * scale), 20.0f * scale, g_Theme.AccentU32());
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 26.0f * scale);
+            }
+            ImGui::BeginGroup();
+            ImGui::TextColored(ImVec4(0.96f, 0.96f, 0.98f, 1.0f), "%s", title);
+            if(subtitle && subtitle[0])
+            {
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f * scale);
+                ImGui::TextColored(ImVec4(0.50f, 0.52f, 0.58f, 1.0f), "%s", subtitle);
+            }
+            ImGui::EndGroup();
+            ImGui::Spacing();
+        }
+    };
+
+    auto EndCard = [&]() {
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(2);
+    };
+
+    // Левая колонка (48% ширины): карточки настроек
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 8.0f * scale));
+    ImGui::BeginChild("##lesorub_col_left", ImVec2(leftColW, -1.0f), false, ImGuiWindowFlags_NoScrollbar);
+
+    // 1. Карточка «Поиск меток»
+    BeginCard("##card_wood_search", TramIcons::DrawRoad, "Поиск меток", "Параметры обнаружения чекпоинтов");
+    ImGui::SetNextItemWidth(150.0f * scale);
+    if(ImGui::SliderFloat("Радиус поиска", &state.pointMatchRadius, 10.0f, 50.0f, "%.1f м"))
+    {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_lesorubState.pointMatchRadius = state.pointMatchRadius;
+        }
+        char buf[32];
+        snprintf(buf, sizeof(buf), "radius:%.2f", state.pointMatchRadius);
+        QueueLesorubCommand(buf);
+    }
+    ImGui::Spacing();
+    ImGui::SetNextItemWidth(150.0f * scale);
+    if(ImGui::SliderFloat("Скорость поворота", &state.rotateSpeed, 0.01f, 0.50f, "%.2f"))
+    {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_lesorubState.rotateSpeed = state.rotateSpeed;
+        }
+        char buf[32];
+        snprintf(buf, sizeof(buf), "rotatespeed:%.3f", state.rotateSpeed);
+        QueueLesorubCommand(buf);
+    }
+    EndCard();
+
+    // 2. Карточка «Параметры и отладка»
+    BeginCard("##card_wood_debug", TramIcons::DrawWrench, "Параметры и отладка", "Диагностика и системные флаги");
+    if(ImGui::Checkbox("Режим отладки (Debug лог в чат)", &state.debug))
+    {
+        {
+            std::scoped_lock lock(g_bridgeMutex);
+            g_lesorubState.debug = state.debug;
+        }
+        QueueLesorubCommand(state.debug ? "debug:1" : "debug:0");
+    }
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f), "• Автоматический поиск чекпоинта\n• Плавное выравнивание камеры");
+    EndCard();
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+
+    ImGui::SameLine(0, 14.0f * scale);
+
+    // Правая колонка: Кнопка, Телеметрия, Инструкция
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 8.0f * scale));
+    ImGui::BeginChild("##lesorub_col_right", ImVec2(rightColW, -1.0f), false, ImGuiWindowFlags_NoScrollbar);
+
     const bool isRunning = state.enabled;
-    const char* btnLabel = isRunning ? " ⏹  Остановить Лесоруба" : " ⏻  Запустить Лесоруба";
+    const char* btnLabel = isRunning ? " ⏹  ОСТАНОВИТЬ ЛЕСОРУБА" : " ⏻  ЗАПУСТИТЬ ЛЕСОРУБА";
     const ImU32 actionBtnColor = isRunning ? IM_COL32(215, 55, 55, 255) : g_Theme.AccentU32();
     const ImU32 actionBtnHover = isRunning ? IM_COL32(240, 75, 75, 255) : g_Theme.HoverU32();
     const ImU32 actionBtnActive = isRunning ? IM_COL32(185, 40, 40, 255) : g_Theme.ActiveU32();
@@ -2005,56 +2264,56 @@ void DrawWoodBot(ImVec2 position, ImVec2 size, float scale)
     }
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(4);
-    ImGui::Spacing();
 
+    // Карточка «Телеметрия смены»
+    BeginCard("##card_wood_telemetry", TramIcons::DrawChart, "Телеметрия смены", "Состояние навигации и детекции");
     ImGui::TextColored(state.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(0.8f, 0.8f, 0.8f, 1.0f),
-        state.loaded ? "[LUA ONLINE]" : "[LUA STANDBY]");
-    ImGui::SameLine();
-    ImGui::Text("| Состояние: %s", state.status.c_str());
-    ImGui::Separator();
+        state.loaded ? "● LUA ONLINE" : "● LUA STANDBY");
+    ImGui::SameLine(0, 10.0f * scale);
+    ImGui::TextColored(isRunning ? ImVec4(0.35f, 0.88f, 0.65f, 1.0f) : ImVec4(0.70f, 0.72f, 0.78f, 1.0f),
+        "| Статус: %s", isRunning ? "В работе" : "Остановлен");
 
-    ImGui::Text("Настройки поиска (CFG):");
     ImGui::Spacing();
-
-    ImGui::SetNextItemWidth(220.0f * scale);
-    if(ImGui::SliderFloat("Радиус поиска метки", &state.pointMatchRadius, 10.0f, 50.0f, "%.1f м"))
-    {
-        {
-            std::scoped_lock lock(g_bridgeMutex);
-            g_lesorubState.pointMatchRadius = state.pointMatchRadius;
-        }
-        char buf[32];
-        snprintf(buf, sizeof(buf), "radius:%.2f", state.pointMatchRadius);
-        QueueLesorubCommand(buf);
-    }
-
-    ImGui::SetNextItemWidth(220.0f * scale);
-    if(ImGui::SliderFloat("Скорость поворота", &state.rotateSpeed, 0.01f, 0.50f, "%.2f"))
-    {
-        {
-            std::scoped_lock lock(g_bridgeMutex);
-            g_lesorubState.rotateSpeed = state.rotateSpeed;
-        }
-        char buf[32];
-        snprintf(buf, sizeof(buf), "rotatespeed:%.3f", state.rotateSpeed);
-        QueueLesorubCommand(buf);
-    }
-
-    if(ImGui::Checkbox("Режим отладки (Debug лог в чат)", &state.debug))
-    {
-        {
-            std::scoped_lock lock(g_bridgeMutex);
-            g_lesorubState.debug = state.debug;
-        }
-        QueueLesorubCommand(state.debug ? "debug:1" : "debug:0");
-    }
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Текущая задача:");
+    ImGui::SameLine(0, 6.0f * scale);
+    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "%s", state.status.empty() ? "Ожидание запуска" : state.status.c_str());
 
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
-    ImGui::TextDisabled("На текущем этапе перемещение по меткам автоматизировано.");
-    ImGui::TextDisabled("Мини-игры и сруб дерева выполняются вручную.");
+    float boxW = (ImGui::GetContentRegionAvail().x - 6.0f * scale) * 0.5f;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(24, 27, 38, 255));
+    ImGui::BeginChild("##wood_stat1", ImVec2(boxW, 44.0f * scale), ImGuiChildFlags_Borders);
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Цель");
+    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "Ближайшее дерево");
+    ImGui::EndChild();
+
+    ImGui::SameLine(0, 6.0f * scale);
+    ImGui::BeginChild("##wood_stat2", ImVec2(boxW, 44.0f * scale), ImGuiChildFlags_Borders);
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Радиус захвата");
+    ImGui::TextColored(ImVec4(0.35f, 0.88f, 0.65f, 1.0f), "%.0f м", state.pointMatchRadius);
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    EndCard();
+
+    // Карточка «Инструкция и журнал»
+    BeginCard("##card_wood_log", TramIcons::DrawDoc, "Инструкция и журнал", "Правила работы и лог событий", 120.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 16, 23, 255));
+    if(ImGui::BeginChild("##wood_log_scroll", ImVec2(-1.0f, -1.0f), true))
+    {
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "[Инфо] Лесоповал: перемещение по меткам автоматизировано");
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "[Инфо] Мини-игры и спил дерева выполняются вручную");
+        ImGui::TextColored(ImVec4(0.35f, 0.78f, 0.98f, 1.0f), "[Этап] Текущее состояние: %s", state.status.c_str());
+        if(isRunning)
+            ImGui::TextColored(ImVec4(0.35f, 0.88f, 0.65f, 1.0f), "[Движение] Автоматический цикл активен");
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    EndCard();
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
 
     ImGui::EndChild();
     ImGui::PopStyleColor(9);
@@ -2151,6 +2410,66 @@ struct GuiToastMessage
     bool started{false};
 };
 
+struct ToastConfig
+{
+    bool enabled{true};
+    int position{0}; // 0 = Сверху по центру, 1 = Сверху справа, 2 = Снизу по центру, 3 = Снизу справа
+    float durationSec{4.0f};
+    int maxVisible{3};
+    bool soundEnabled{true};
+    bool soundAdminOnly{false};
+    bool showAdmin{true};
+    bool showBots{true};
+    bool showDtp{true};
+    bool showSystem{true};
+    float bgOpacity{0.92f};
+};
+
+static ToastConfig g_toastConfig;
+static bool s_toastConfigLoaded = false;
+
+static void LoadToastSettings()
+{
+    if (s_toastConfigLoaded) return;
+    std::wstring ini = GetSettingsIniPath();
+    g_toastConfig.enabled = GetPrivateProfileIntW(L"Toast", L"Enabled", 1, ini.c_str()) != 0;
+    g_toastConfig.position = GetPrivateProfileIntW(L"Toast", L"Position", 0, ini.c_str());
+    wchar_t buf[64]{};
+    GetPrivateProfileStringW(L"Toast", L"Duration", L"4.0", buf, 64, ini.c_str());
+    g_toastConfig.durationSec = std::wcstof(buf, nullptr);
+    if (g_toastConfig.durationSec < 1.0f) g_toastConfig.durationSec = 4.0f;
+    g_toastConfig.maxVisible = GetPrivateProfileIntW(L"Toast", L"MaxVisible", 3, ini.c_str());
+    g_toastConfig.soundEnabled = GetPrivateProfileIntW(L"Toast", L"Sound", 1, ini.c_str()) != 0;
+    g_toastConfig.soundAdminOnly = GetPrivateProfileIntW(L"Toast", L"SoundAdminOnly", 0, ini.c_str()) != 0;
+    g_toastConfig.showAdmin = GetPrivateProfileIntW(L"Toast", L"ShowAdmin", 1, ini.c_str()) != 0;
+    g_toastConfig.showBots = GetPrivateProfileIntW(L"Toast", L"ShowBots", 1, ini.c_str()) != 0;
+    g_toastConfig.showDtp = GetPrivateProfileIntW(L"Toast", L"ShowDtp", 1, ini.c_str()) != 0;
+    g_toastConfig.showSystem = GetPrivateProfileIntW(L"Toast", L"ShowSystem", 1, ini.c_str()) != 0;
+    GetPrivateProfileStringW(L"Toast", L"Opacity", L"0.92", buf, 64, ini.c_str());
+    g_toastConfig.bgOpacity = std::wcstof(buf, nullptr);
+    if (g_toastConfig.bgOpacity <= 0.2f) g_toastConfig.bgOpacity = 0.92f;
+    s_toastConfigLoaded = true;
+}
+
+static void SaveToastSettings()
+{
+    std::wstring ini = GetSettingsIniPath();
+    WritePrivateProfileStringW(L"Toast", L"Enabled", g_toastConfig.enabled ? L"1" : L"0", ini.c_str());
+    WritePrivateProfileStringW(L"Toast", L"Position", std::to_wstring(g_toastConfig.position).c_str(), ini.c_str());
+    wchar_t buf[64]{};
+    swprintf_s(buf, L"%.1f", g_toastConfig.durationSec);
+    WritePrivateProfileStringW(L"Toast", L"Duration", buf, ini.c_str());
+    WritePrivateProfileStringW(L"Toast", L"MaxVisible", std::to_wstring(g_toastConfig.maxVisible).c_str(), ini.c_str());
+    WritePrivateProfileStringW(L"Toast", L"Sound", g_toastConfig.soundEnabled ? L"1" : L"0", ini.c_str());
+    WritePrivateProfileStringW(L"Toast", L"SoundAdminOnly", g_toastConfig.soundAdminOnly ? L"1" : L"0", ini.c_str());
+    WritePrivateProfileStringW(L"Toast", L"ShowAdmin", g_toastConfig.showAdmin ? L"1" : L"0", ini.c_str());
+    WritePrivateProfileStringW(L"Toast", L"ShowBots", g_toastConfig.showBots ? L"1" : L"0", ini.c_str());
+    WritePrivateProfileStringW(L"Toast", L"ShowDtp", g_toastConfig.showDtp ? L"1" : L"0", ini.c_str());
+    WritePrivateProfileStringW(L"Toast", L"ShowSystem", g_toastConfig.showSystem ? L"1" : L"0", ini.c_str());
+    swprintf_s(buf, L"%.2f", g_toastConfig.bgOpacity);
+    WritePrivateProfileStringW(L"Toast", L"Opacity", buf, ini.c_str());
+}
+
 static std::mutex g_toastMutex;
 static std::deque<GuiToastMessage> g_toastQueue;
 static std::vector<GuiToastMessage> g_activeToasts;
@@ -2161,6 +2480,28 @@ void InternalPushToast(std::string_view title, std::string_view message, std::st
 {
     if(title.empty() && message.empty())
         return;
+
+    LoadToastSettings();
+    if(!g_toastConfig.enabled)
+        return;
+
+    std::string toastType = type.empty() ? "info" : std::string(type);
+    if(toastType == "admin" && !g_toastConfig.showAdmin)
+        return;
+    if((toastType == "info" || toastType == "bot" || toastType == "success") && !g_toastConfig.showBots)
+        return;
+    if((toastType == "warning" || toastType == "dtp") && !g_toastConfig.showDtp)
+        return;
+    if(toastType == "error" && !g_toastConfig.showSystem)
+        return;
+
+    if(g_toastConfig.soundEnabled)
+    {
+        if(toastType == "admin")
+            PlayTramAlertSignal();
+        else if(!g_toastConfig.soundAdminOnly)
+            MessageBeep(MB_ICONINFORMATION);
+    }
 
     std::scoped_lock lock(g_toastMutex);
     const auto now = std::chrono::steady_clock::now();
@@ -2180,8 +2521,8 @@ void InternalPushToast(std::string_view title, std::string_view message, std::st
     GuiToastMessage toast;
     toast.title = std::string(title);
     toast.message = std::string(message);
-    toast.type = type.empty() ? "info" : std::string(type);
-    toast.durationSec = durationSec > 0.5f ? durationSec : 3.8f;
+    toast.type = toastType;
+    toast.durationSec = durationSec > 0.5f ? durationSec : g_toastConfig.durationSec;
     toast.started = false;
 
     if(toast.type == "admin")
@@ -2218,8 +2559,8 @@ void RenderToasts(float scale)
             ++it;
     }
 
-    constexpr size_t MAX_VISIBLE_TOASTS = 3;
-    while(g_activeToasts.size() < MAX_VISIBLE_TOASTS && !g_toastQueue.empty())
+    const size_t maxVisible = static_cast<size_t>(std::clamp(g_toastConfig.maxVisible, 1, 6));
+    while(g_activeToasts.size() < maxVisible && !g_toastQueue.empty())
     {
         auto item = g_toastQueue.front();
         g_toastQueue.pop_front();
@@ -2255,8 +2596,15 @@ void RenderToasts(float scale)
             alpha = (toast.durationSec - elapsed) / 0.6f;
         alpha = std::clamp(alpha, 0.0f, 1.0f);
 
-        const float posY = startY + static_cast<float>(i) * (toastH + toastGap);
-        const ImVec2 toastPos((io.DisplaySize.x - toastW) * 0.5f, posY);
+        ImVec2 toastPos;
+        if(g_toastConfig.position == 1)
+            toastPos = ImVec2(io.DisplaySize.x - toastW - 24.0f * scale, startY + static_cast<float>(i) * (toastH + toastGap));
+        else if(g_toastConfig.position == 2)
+            toastPos = ImVec2((io.DisplaySize.x - toastW) * 0.5f, io.DisplaySize.y - 45.0f * scale - (static_cast<float>(i) + 1.0f) * (toastH + toastGap));
+        else if(g_toastConfig.position == 3)
+            toastPos = ImVec2(io.DisplaySize.x - toastW - 24.0f * scale, io.DisplaySize.y - 45.0f * scale - (static_cast<float>(i) + 1.0f) * (toastH + toastGap));
+        else
+            toastPos = ImVec2((io.DisplaySize.x - toastW) * 0.5f, startY + static_cast<float>(i) * (toastH + toastGap));
 
         ImGui::SetNextWindowPos(toastPos, ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(toastW, toastH), ImGuiCond_Always);
@@ -2289,8 +2637,8 @@ void RenderToasts(float scale)
             ImVec2 p0 = toastPos;
             ImVec2 p1(toastPos.x + toastW, toastPos.y + toastH);
 
-            draw->AddRectFilled(p0, p1, IM_COL32(20, 20, 26, static_cast<int>(245 * alpha)), 8.0f * scale);
-            draw->AddRect(p0, p1, IM_COL32(60, 60, 75, static_cast<int>(200 * alpha)), 8.0f * scale, 0, 1.0f);
+            draw->AddRectFilled(p0, p1, IM_COL32(20, 20, 26, static_cast<int>(255 * alpha * g_toastConfig.bgOpacity)), 8.0f * scale);
+            draw->AddRect(p0, p1, IM_COL32(60, 60, 75, static_cast<int>(200 * alpha * g_toastConfig.bgOpacity)), 8.0f * scale, 0, 1.0f);
 
             draw->AddRectFilled(ImVec2(p0.x + 8.0f * scale, p1.y - 3.0f * scale),
                 ImVec2(p1.x - 8.0f * scale, p1.y - 1.0f * scale),
@@ -3343,9 +3691,10 @@ static void ModeSelector(const char* id, bool* isHold, float scale)
 
 void DrawMiscTab(ImVec2 position, ImVec2 size, float scale)
 {
-    LoadClientMiscSettings();
+    LoadToastSettings();
+    LoadThemeSettings();
     ImGui::SetCursorScreenPos(position);
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * scale);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 18, 135));
     ImGui::BeginChild("##misc_tab", size, ImGuiChildFlags_Borders);
 
@@ -3353,68 +3702,92 @@ void DrawMiscTab(ImVec2 position, ImVec2 size, float scale)
     const float availW = ImGui::GetContentRegionAvail().x;
     const float colW = (availW - 14.0f * scale) * 0.5f;
 
-    // Левая колонка: Движение
+    // Левая колонка: УВЕДОМЛЕНИЯ (TOAST)
     ImGui::BeginGroup();
     {
-        ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, 1.0f), "ДВИЖЕНИЕ (ПАРАМЕТРЫ УПРАВЛЕНИЯ)");
+        ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, 1.0f), "УВЕДОМЛЕНИЯ (TOAST)");
         ImGui::Separator();
         ImGui::Spacing();
 
-        // 1. Скорость игры
+        // 1. Основные параметры
         ImGui::PushStyleColor(ImGuiCol_ChildBg, c.plashkaBg);
-        ImGui::BeginChild("##box_speed", ImVec2(colW, 108.0f * scale), ImGuiChildFlags_Borders);
-        if(ImGui::Checkbox("Скорость игры", &g_clientMisc.gameSpeedEnabled))
-            SaveClientMiscSettings();
-        ImGui::SameLine(colW - 195.0f * scale);
-        KeyBindButton("##speed_key", &g_clientMisc.gameSpeedKey, scale);
-        ImGui::SameLine(0, 4.0f * scale);
-        ModeSelector("##speed_mode", &g_clientMisc.gameSpeedHold, scale);
+        ImGui::BeginChild("##box_toast_main", ImVec2(colW, 192.0f * scale), ImGuiChildFlags_Borders);
+        if(ImGui::Checkbox("Всплывающие уведомления (Toast)", &g_toastConfig.enabled))
+            SaveToastSettings();
 
         ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.6f, 0.65f, 0.75f, 1.0f), "Множитель скорости:");
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Позиция на экране:");
+        static const char* s_posNames[] = {
+            "Сверху по центру",
+            "Сверху справа",
+            "Снизу по центру",
+            "Снизу справа"
+        };
         ImGui::SetNextItemWidth(colW - 20.0f * scale);
-        if(ImGui::SliderFloat("##speed_slider", &g_clientMisc.gameSpeedMultiplier, 0.5f, 2.0f, "%.2fx"))
-            SaveClientMiscSettings();
+        if(ImGui::Combo("##toast_pos_combo", &g_toastConfig.position, s_posNames, 4))
+            SaveToastSettings();
+
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Длительность показа:");
+        ImGui::SetNextItemWidth(colW - 20.0f * scale);
+        if(ImGui::SliderFloat("##toast_duration", &g_toastConfig.durationSec, 1.5f, 10.0f, "%.1f сек"))
+            SaveToastSettings();
+
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Макс. уведомлений:");
+        ImGui::SetNextItemWidth(colW - 20.0f * scale);
+        if(ImGui::SliderInt("##toast_max", &g_toastConfig.maxVisible, 1, 6, "%d шт."))
+            SaveToastSettings();
         ImGui::EndChild();
         ImGui::PopStyleColor();
 
         ImGui::Spacing();
 
-        // 2. Плавный разгон
+        // 2. Звук и фильтры категорий
         ImGui::PushStyleColor(ImGuiCol_ChildBg, c.plashkaBg);
-        ImGui::BeginChild("##box_accel", ImVec2(colW, 108.0f * scale), ImGuiChildFlags_Borders);
-        if(ImGui::Checkbox("Плавный разгон", &g_clientMisc.smoothAccelEnabled))
-            SaveClientMiscSettings();
-        ImGui::SameLine(colW - 195.0f * scale);
-        KeyBindButton("##accel_key", &g_clientMisc.smoothAccelKey, scale);
-        ImGui::SameLine(0, 4.0f * scale);
-        ModeSelector("##accel_mode", &g_clientMisc.smoothAccelHold, scale);
+        ImGui::BeginChild("##box_toast_filters", ImVec2(colW, 120.0f * scale), ImGuiChildFlags_Borders);
+        if(ImGui::Checkbox("Звуковое оповещение", &g_toastConfig.soundEnabled))
+            SaveToastSettings();
+        if(g_toastConfig.soundEnabled)
+        {
+            ImGui::SameLine(0, 8.0f * scale);
+            if(ImGui::Checkbox("Только админ", &g_toastConfig.soundAdminOnly))
+                SaveToastSettings();
+        }
 
         ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.6f, 0.65f, 0.75f, 1.0f), "Плавность разгона:");
-        ImGui::SetNextItemWidth(colW - 20.0f * scale);
-        if(ImGui::SliderFloat("##accel_slider", &g_clientMisc.smoothAccelPercent, 0.0f, 100.0f, "%.0f%%"))
-            SaveClientMiscSettings();
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Категории уведомлений:");
+        if(ImGui::Checkbox("Слежка админов", &g_toastConfig.showAdmin))
+            SaveToastSettings();
+        ImGui::SameLine(0, 10.0f * scale);
+        if(ImGui::Checkbox("События ботов", &g_toastConfig.showBots))
+            SaveToastSettings();
+        if(ImGui::Checkbox("ДТП и аварии", &g_toastConfig.showDtp))
+            SaveToastSettings();
+        ImGui::SameLine(0, 10.0f * scale);
+        if(ImGui::Checkbox("Ошибки системы", &g_toastConfig.showSystem))
+            SaveToastSettings();
         ImGui::EndChild();
         ImGui::PopStyleColor();
 
         ImGui::Spacing();
 
-        // 3. Тормоз
+        // 3. Тест уведомлений
         ImGui::PushStyleColor(ImGuiCol_ChildBg, c.plashkaBg);
-        ImGui::BeginChild("##box_brake", ImVec2(colW, 108.0f * scale), ImGuiChildFlags_Borders);
-        if(ImGui::Checkbox("Тормоз (Ручник)", &g_clientMisc.brakeEnabled))
-            SaveClientMiscSettings();
-        ImGui::SameLine(colW - 195.0f * scale);
-        KeyBindButton("##brake_key", &g_clientMisc.brakeKey, scale);
+        ImGui::BeginChild("##box_toast_test", ImVec2(colW, 64.0f * scale), ImGuiChildFlags_Borders);
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Тестирование уведомлений:");
+        const float tBtnW = (colW - 20.0f * scale - 12.0f * scale) / 4.0f;
+        if(ImGui::Button("Инфо##t_info", ImVec2(tBtnW, 22.0f * scale)))
+            GuiPushToast("Тестовое уведомление", "Система DarkFlame активна и работает стабильно", "info", g_toastConfig.durationSec);
         ImGui::SameLine(0, 4.0f * scale);
-        ModeSelector("##brake_mode", &g_clientMisc.brakeHold, scale);
-
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.6f, 0.65f, 0.75f, 1.0f), "Сила торможения:");
-        ImGui::SetNextItemWidth(colW - 20.0f * scale);
-        if(ImGui::SliderFloat("##brake_slider", &g_clientMisc.brakePercent, 0.0f, 100.0f, "%.0f%%"))
-            SaveClientMiscSettings();
+        if(ImGui::Button("Успех##t_succ", ImVec2(tBtnW, 22.0f * scale)))
+            GuiPushToast("Рейс завершен", "Маршрут выполнен, смена закрыта", "success", g_toastConfig.durationSec);
+        ImGui::SameLine(0, 4.0f * scale);
+        if(ImGui::Button("ДТП##t_warn", ImVec2(tBtnW, 22.0f * scale)))
+            GuiPushToast("Внимание: ДТП", "Зафиксирован контакт с объектом на путях", "warning", g_toastConfig.durationSec);
+        ImGui::SameLine(0, 4.0f * scale);
+        if(ImGui::Button("Админ##t_adm", ImVec2(tBtnW, 22.0f * scale)))
+            GuiPushToast("За вами следит администратор", "Emily_Quincy (Главный администратор | 7 ур.)", "admin", g_toastConfig.durationSec);
         ImGui::EndChild();
         ImGui::PopStyleColor();
     }
@@ -3422,83 +3795,64 @@ void DrawMiscTab(ImVec2 position, ImVec2 size, float scale)
 
     ImGui::SameLine(0, 14.0f * scale);
 
-    // Правая колонка: FPS
+    // Правая колонка: ОФОРМЛЕНИЕ И ТЕМА
     ImGui::BeginGroup();
     {
-        ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, 1.0f), "FPS (ОГРАНИЧИТЕЛЬ ЧАСТОТЫ КАДРОВ)");
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, c.plashkaBg);
-        ImGui::BeginChild("##box_fps", ImVec2(colW, 130.0f * scale), ImGuiChildFlags_Borders);
-        if(ImGui::Checkbox("Ограничитель частоты кадров", &g_clientMisc.fpsLimitEnabled))
-            SaveClientMiscSettings();
-
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.6f, 0.65f, 0.75f, 1.0f), "Точная регулировка:");
-        ImGui::SetNextItemWidth(colW - 20.0f * scale);
-        if(ImGui::SliderInt("##fps_slider", &g_clientMisc.fpsLimit, 30, 300, "%d FPS"))
-            SaveClientMiscSettings();
-
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.6f, 0.65f, 0.75f, 1.0f), "Быстрые пресеты FPS:");
-        const int presets[] = { 100, 144, 165, 180, 200 };
-        const float pBtnW = (colW - 20.0f * scale - 16.0f * scale) / 5.0f;
-        for(int i = 0; i < 5; ++i)
-        {
-            if(i > 0) ImGui::SameLine(0, 4.0f * scale);
-            const bool active = (g_clientMisc.fpsLimit == presets[i]);
-            char pId[32]; std::snprintf(pId, sizeof(pId), "%d##p%d", presets[i], i);
-            ImGui::PushStyleColor(ImGuiCol_Button, active ? c.accent : c.buttonBg);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, active ? c.accent : c.buttonHover);
-            ImGui::PushStyleColor(ImGuiCol_Text, active ? IM_COL32(255, 255, 255, 255) : c.textMuted);
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f * scale);
-            if(ImGui::Button(pId, ImVec2(pBtnW, 24.0f * scale)))
-            {
-                g_clientMisc.fpsLimit = presets[i];
-                SaveClientMiscSettings();
-            }
-            ImGui::PopStyleVar();
-            ImGui::PopStyleColor(3);
-        }
-        ImGui::EndChild();
-        ImGui::PopStyleColor();
-
-        ImGui::Spacing();
-
-        // Подсказка
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, c.plashkaBg);
-        ImGui::BeginChild("##box_fps_info", ImVec2(colW, 85.0f * scale), ImGuiChildFlags_Borders);
-        ImGui::TextColored(ImVec4(0.75f, 0.78f, 0.85f, 1.0f),
-            "Ограничитель частоты кадров устраняет\n"
-            "рассинхронизацию физики и сетевых\n"
-            "пакетов MTA Province при резких скачках,\n"
-            "а также предотвращает перегрев видеокарты.");
-        ImGui::EndChild();
-        ImGui::PopStyleColor();
-
-        ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.95f, 1.0f), "ОФОРМЛЕНИЕ И ТЕМА");
         ImGui::Separator();
         ImGui::Spacing();
 
         ImGui::PushStyleColor(ImGuiCol_ChildBg, c.plashkaBg);
-        ImGui::BeginChild("##box_theme", ImVec2(colW, 85.0f * scale), ImGuiChildFlags_Borders);
-        ImGui::TextUnformatted("Акцентный цвет:");
-        ImGui::SameLine();
-        if (ImGui::ColorEdit3("##custom_accent", (float*)&g_Theme.accentColor, 
-            ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel)) 
+        ImGui::BeginChild("##box_theme_picker", ImVec2(colW, -1.0f), ImGuiChildFlags_Borders);
+
+        ImGuiColorEditFlags pickerFlags = ImGuiColorEditFlags_PickerHueWheel
+            | ImGuiColorEditFlags_AlphaBar
+            | ImGuiColorEditFlags_DisplayHSV
+            | ImGuiColorEditFlags_DisplayRGB
+            | ImGuiColorEditFlags_DisplayHex;
+
+        ImGui::SetNextItemWidth(colW - 20.0f * scale);
+        if(ImGui::ColorPicker4("##accent_picker", (float*)&g_Theme.accentColor, pickerFlags))
         {
             g_Theme.UpdateDerived();
             SaveThemeToConfig();
         }
-        ImGui::SameLine(0, 8.0f * scale);
-        if (XoneButton("По умолчанию##reset_accent", scale, false, 115.0f * scale, 22.0f))
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Быстрые пресеты палитры:");
+        struct ThemePreset { const char* name; ImVec4 col; };
+        static const ThemePreset s_presets[] = {
+            { "Синий", ImVec4(0.23f, 0.51f, 0.96f, 1.0f) },
+            { "Фиолет", ImVec4(0.60f, 0.35f, 0.95f, 1.0f) },
+            { "Изумруд", ImVec4(0.10f, 0.75f, 0.50f, 1.0f) },
+            { "Кармин", ImVec4(0.92f, 0.18f, 0.49f, 1.0f) },
+            { "Золото", ImVec4(0.96f, 0.65f, 0.12f, 1.0f) }
+        };
+        const float presetW = (colW - 20.0f * scale - 16.0f * scale) / 5.0f;
+        for(int p = 0; p < 5; ++p)
+        {
+            if(p > 0) ImGui::SameLine(0, 4.0f * scale);
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::ColorConvertFloat4ToU32(s_presets[p].col));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f * scale);
+            if(ImGui::Button(s_presets[p].name, ImVec2(presetW, 22.0f * scale)))
+            {
+                g_Theme.accentColor = s_presets[p].col;
+                g_Theme.UpdateDerived();
+                SaveThemeToConfig();
+            }
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::Spacing();
+        if(XoneButton("Сбросить по умолчанию##reset_theme", scale, false, colW - 20.0f * scale, 24.0f))
         {
             ResetThemeSettings();
         }
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.6f, 0.65f, 0.75f, 1.0f), "Мгновенно обновляет цвет кнопок, чекбоксов и индикаторов.");
+
         ImGui::EndChild();
         ImGui::PopStyleColor();
     }

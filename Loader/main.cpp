@@ -403,13 +403,13 @@ void DrawLicenseCard(ImDrawList* draw, ImVec2 cardPos, float width)
     draw->AddRect(statPos, statEnd, IM_COL32(255, 255, 255, 16), 4.0f, 0, 1.0f);
 
     const ImVec2 dotCenter(statPos.x + 14.0f, statPos.y + 16.0f);
-    const bool subActive = g_license.is_pro || !g_config.licenseKey.empty();
+    const bool subActive = g_license.is_pro;
     const ImU32 dotCol = subActive ? IM_COL32(74, 222, 128, 255) : IM_COL32(248, 113, 113, 255);
     draw->AddCircleFilled(dotCenter, 4.5f, dotCol);
     draw->AddCircle(dotCenter, 6.5f, dotCol & IM_COL32(255, 255, 255, 80), 16, 1.0f);
 
     const char* subStatusText = subActive
-        ? (g_license.is_pro ? "Подписка активна (PRO)" : "Подписка активна (STANDARD)")
+        ? "Подписка активна (PRO)"
         : "Подписка не активна (FREE)";
 
     // Right-aligned buttons with strict non-overlapping layout
@@ -495,10 +495,18 @@ void DrawLicenseCard(ImDrawList* draw, ImVec2 cardPos, float width)
             key.pop_back();
         if(!key.empty())
         {
-            LoaderLicense::ValidateKey(g_license, key);
-            LoaderLicense::SaveLicenseToFile(g_directory, key);
-            g_config.licenseKey = key;
-            Config::Save(g_directory, g_config);
+            if(LoaderLicense::ValidateKey(g_license, key))
+            {
+                LoaderLicense::SaveLicenseToFile(g_directory, key);
+                g_config.licenseKey = key;
+                Config::Save(g_directory, g_config);
+            }
+            else
+            {
+                LoaderLicense::SaveLicenseToFile(g_directory, "");
+                g_config.licenseKey.clear();
+                Config::Save(g_directory, g_config);
+            }
         }
     }
     ImGui::PopStyleVar();
@@ -1666,15 +1674,22 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     // 1. Initialize License state and load existing key
     g_license.hwid = LoaderLicense::GenerateHWID(g_license.mac);
     std::string savedKey = LoaderLicense::LoadSavedLicense(g_directory);
+    if(savedKey.empty() && !g_config.licenseKey.empty())
+        savedKey = g_config.licenseKey;
+
     if(!savedKey.empty())
     {
-        LoaderLicense::ValidateKey(g_license, savedKey);
-        std::snprintf(g_keyInput, sizeof(g_keyInput), "%s", savedKey.c_str());
-    }
-    else if(!g_config.licenseKey.empty())
-    {
-        LoaderLicense::ValidateKey(g_license, g_config.licenseKey);
-        std::snprintf(g_keyInput, sizeof(g_keyInput), "%s", g_config.licenseKey.c_str());
+        if(LoaderLicense::ValidateKey(g_license, savedKey))
+        {
+            std::snprintf(g_keyInput, sizeof(g_keyInput), "%s", savedKey.c_str());
+        }
+        else
+        {
+            LoaderLicense::SaveLicenseToFile(g_directory, "");
+            g_config.licenseKey.clear();
+            Config::Save(g_directory, g_config);
+            g_keyInput[0] = '\0';
+        }
     }
 
     WNDCLASSEXW windowClass{sizeof(windowClass), CS_CLASSDC, &WindowProc, 0, 0,
