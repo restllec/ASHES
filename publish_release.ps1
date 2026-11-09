@@ -1,7 +1,7 @@
-param(
-    [string]$Version = "1.8.2",
-    [string]$Title = "ASHES v$Version (Taxi Profile Startup Toggles Fix)",
-    [string]$Notes = "Release v$($Version) - all Taxi profile toggles and coordinate clicker start disabled by default to prevent triggering hotkeys during login, plus bugfixes.",
+﻿param(
+    [string]$Version = "1.8.3",
+    [string]$Title = "ASHES v$Version (PolivTram Multi-Route, Tram Distance & GUI Alignment)",
+    [string]$Notes = "Release v$($Version) - PolivTram lifecycle & multi-route fixes, TramBot wagon distance control, unified toast notification queue, and Loader/Client UI layout alignment.",
     [switch]$SkipBuild
 )
 
