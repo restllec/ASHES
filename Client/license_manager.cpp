@@ -176,6 +176,60 @@ namespace
         }
     }
 
+    std::string ComputeLicenseSignature(const std::string& key, const std::string& hwid, const std::string& expires)
+    {
+        uint64_t hash = Fnv1aHash(key + "|" + hwid + "|" + expires + "|DARKFLAME_ASHES_PRO_2026");
+        char buf[32]{};
+        std::snprintf(buf, sizeof(buf), "%016llX", static_cast<unsigned long long>(hash));
+        return buf;
+    }
+
+    struct SavedLicenseData
+    {
+        std::string key;
+        std::string expires;
+        std::string signature;
+        bool hasSignature = false;
+    };
+
+    std::string LoadKeyFromFile();
+
+    SavedLicenseData LoadSavedLicenseData()
+    {
+        SavedLicenseData data;
+        std::wstring dir;
+        if (!g_licenseDirectory.empty())
+            dir = g_licenseDirectory;
+        if (!dir.empty() && dir.back() != L'\\' && dir.back() != L'/')
+            dir.push_back(L'\\');
+
+        for (const wchar_t* name : { L"Ashes_license.cfg", L"DarkFlame_license.cfg" })
+        {
+            std::ifstream file(dir + name);
+            if (file.is_open())
+            {
+                std::getline(file, data.key);
+                std::getline(file, data.expires);
+                std::getline(file, data.signature);
+                file.close();
+
+                auto trim = [](std::string& s) {
+                    while (!s.empty() && (s.back() == '\r' || s.back() == '\n' || s.back() == ' '))
+                        s.pop_back();
+                };
+                trim(data.key);
+                trim(data.expires);
+                trim(data.signature);
+                if (!data.signature.empty())
+                    data.hasSignature = true;
+                if (!data.key.empty())
+                    return data;
+            }
+        }
+        data.key = LoadKeyFromFile();
+        return data;
+    }
+
     std::string LoadKeyFromFile()
     {
         std::wstring dir;
@@ -233,8 +287,9 @@ namespace
         }
 
         // WinHTTP client verification
-        HINTERNET hSession = WinHttpOpen(L"ASHES-Client/1.0",
-            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        HINTERNET hSession = WinHttpOpen(
+            L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
         if (!hSession)
         {
             g_license.is_pro = false;
@@ -242,8 +297,9 @@ namespace
             return false;
         }
 
-        // 3 sec timeout so UI doesn't hitch
-        WinHttpSetTimeouts(hSession, 1500, 2000, 3000, 3000);
+        DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
+        WinHttpSetOption(hSession, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
+        WinHttpSetTimeouts(hSession, 10000, 10000, 10000, 15000);
 
         HINTERNET hConnect = WinHttpConnect(hSession, L"ashes-licensing.vercel.app", INTERNET_DEFAULT_HTTPS_PORT, 0);
         bool verified = false;
@@ -255,6 +311,15 @@ namespace
                 nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
             if (hRequest)
             {
+                DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+                WinHttpSetOption(hRequest, WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy));
+
+                DWORD secFlags = SECURITY_FLAG_IGNORE_UNKNOWN_CA |
+                                 SECURITY_FLAG_IGNORE_CERT_DATE_INVALID |
+                                 SECURITY_FLAG_IGNORE_CERT_CN_INVALID |
+                                 SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
+                WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &secFlags, sizeof(secFlags));
+
                 std::string jsonBody = "{\"key\":\"" + key + "\",\"hwid\":\"" + hwid + "\"}";
                 const wchar_t* headers = L"Content-Type: application/json\r\n";
                 if (WinHttpSendRequest(hRequest, headers, static_cast<DWORD>(-1L),
@@ -301,6 +366,14 @@ namespace
                             }
                         }
                     }
+                    else
+                    {
+                        serverError = "HTTP " + std::to_string(statusCode);
+                    }
+                }
+                else
+                {
+                    serverError = "Сбой WinHttp (" + std::to_string(GetLastError()) + ")";
                 }
                 WinHttpCloseHandle(hRequest);
             }
@@ -313,6 +386,23 @@ namespace
             g_license.is_pro = true;
             g_license.expire_date = serverExpires.empty() ? "Активна (PRO)" : serverExpires.substr(0, 10);
             g_license.status_msg = "PRO (Лицензия подтверждена)";
+            SaveKeyToFile(key);
+            return true;
+        }
+
+        // Explicit rejection from Vercel server (e.g. invalid key or blocked)
+        if (!serverError.empty() && serverError.find("HTTP") == std::string::npos && serverError.find("Сбой") == std::string::npos)
+        {
+            g_license.is_pro = false;
+            g_license.expire_date = "Отклонена";
+            g_license.status_msg = "Ошибка: " + serverError;
+            return false;
+        }
+
+        // On network timeout/unreachable (e.g. 12002) in GTA SA: if previously confirmed by loader, maintain PRO status
+        if (g_license.is_pro)
+        {
+            g_license.status_msg = "PRO (Подтверждено лоадером)";
             return true;
         }
 
@@ -341,17 +431,29 @@ void InitializeLicense()
             static_cast<unsigned int>(hash & 0xFFFF));
         g_license.hwid = buf;
 
-        std::string savedKey = LoadKeyFromFile();
-        if (!savedKey.empty())
+        SavedLicenseData savedData = LoadSavedLicenseData();
+        if (!savedData.key.empty())
         {
-            g_license.key = savedKey;
-            g_license.is_pro = true;
-            g_license.expire_date = "Проверка...";
-            g_license.status_msg = "PRO (Активация...)";
+            g_license.key = savedData.key;
+            std::string expectedSig = ComputeLicenseSignature(savedData.key, g_license.hwid, savedData.expires);
+            bool signatureValid = savedData.hasSignature && (savedData.signature == expectedSig);
 
-            // Asynchronous verification to prevent DllMain deadlocks and network timeouts
+            if (signatureValid)
+            {
+                g_license.is_pro = true;
+                g_license.expire_date = savedData.expires.empty() ? "Активна (PRO)" : savedData.expires.substr(0, 10);
+                g_license.status_msg = "PRO (Подтверждено лоадером)";
+            }
+            else
+            {
+                g_license.is_pro = false;
+                g_license.expire_date = "Проверка...";
+                g_license.status_msg = "PRO (Активация...)";
+            }
+
+            // Asynchronous verification to prevent DllMain deadlocks and check revocation
             struct VerifyContext { std::string hwid; std::string key; };
-            auto* ctx = new VerifyContext{ g_license.hwid, savedKey };
+            auto* ctx = new VerifyContext{ g_license.hwid, savedData.key };
             HANDLE hThread = CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
                 auto* c = static_cast<VerifyContext*>(param);
                 if (c)
@@ -404,12 +506,31 @@ bool ActivateLicenseKey(const std::string& key)
         InitializeLicense();
 
     g_license.key = key;
-    bool ok = CheckLicenseOnServer(g_license.hwid, key);
-    if (ok)
+    g_license.status_msg = "Проверка ключа на сервере...";
+
+    struct VerifyContext { std::string hwid; std::string key; };
+    auto* ctx = new VerifyContext{ g_license.hwid, key };
+    HANDLE hThread = CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
+        auto* c = static_cast<VerifyContext*>(param);
+        if (c)
+        {
+            bool ok = CheckLicenseOnServer(c->hwid, c->key);
+            if (ok)
+            {
+                SaveKeyToFile(c->key);
+            }
+            delete c;
+        }
+        return 0;
+    }, ctx, 0, nullptr);
+    if (hThread)
+        CloseHandle(hThread);
+    else
     {
-        SaveKeyToFile(key);
+        delete ctx;
+        return CheckLicenseOnServer(g_license.hwid, key);
     }
-    return ok;
+    return true;
 }
 
 void DeactivateLicense()

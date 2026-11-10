@@ -1,7 +1,7 @@
 ﻿param(
-    [string]$Version = "1.8.6",
-    [string]$Title = "ASHES v$Version (PolivTram Multi-Route, Tram Distance & GUI Alignment)",
-    [string]$Notes = "Release v$($Version) - PolivTram lifecycle & multi-route fixes, TramBot wagon distance control, unified toast notification queue, and Loader/Client UI layout alignment.",
+    [string]$Version = "1.8.7",
+    [string]$Title = "ASHES v$Version (Tram Route Selection, Siren Mute & Toast Fixes)",
+    [string]$Notes = "Release v$($Version) - Tram route selection only on button click, tram siren and nearby chat notifications muted by default with full settings sync, left column scrolling enabled, and ASHES branding unified.",
     [switch]$SkipBuild
 )
 
@@ -32,6 +32,9 @@ if (!$SkipBuild) {
     Write-Host "=== [1/4] Сборка пропущена (SkipBuild) ===" -ForegroundColor Cyan
 }
 
+if (Test-Path "$PSScriptRoot\Client\assets\lua") {
+    Copy-Item "$PSScriptRoot\Client\assets\lua\*.lua" "$outputDir\" -Force
+}
 if (Test-Path "$PSScriptRoot\PolivTram.lua") {
     Copy-Item "$PSScriptRoot\PolivTram.lua" "$outputDir\PolivTram.lua" -Force
 }

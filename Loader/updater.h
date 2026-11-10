@@ -6,7 +6,7 @@
 
 namespace AshesUpdater
 {
-inline constexpr const char* CURRENT_LOADER_VERSION = "1.8.6";
+inline constexpr const char* CURRENT_LOADER_VERSION = "1.8.7";
 inline constexpr const wchar_t* DEFAULT_MANIFEST_URL =
     L"https://github.com/restllec/ASHES/releases/latest/download/version.json";
 

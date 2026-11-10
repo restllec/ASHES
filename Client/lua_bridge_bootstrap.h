@@ -18,7 +18,7 @@ end
 
 local function injectError(kind,value)
     dfEmit('inject',value,0)
-    outputChatBox('[DarkFlame] '..kind..': '..tostring(value),255,64,64)
+    outputChatBox('[ASHES] '..kind..': '..tostring(value),255,64,64)
 end
 
 local function emitEvent(sourceResource,functionName,allowed,file,line,...)
@@ -140,7 +140,7 @@ local function update()
     hideFunctionCall(true)
     local ok,result=dfInject(target,code)
     if not ok then injectError('Inject error',result)
-    else outputChatBox('[DarkFlame] Lua thread '..tostring(result)..' started.',96,255,128) end
+    else outputChatBox('[ASHES] Lua thread '..tostring(result)..' started.',96,255,128) end
     setTimer(restore,2000,1,G)
 end
 

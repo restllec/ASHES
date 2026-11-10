@@ -34,7 +34,7 @@ struct LoaderInfo
     std::string version;
     std::size_t bytes{};
     PlowLoad kind{PlowLoad::Waiting};
-    std::string text{"Жду мост Lua DarkFlame"};
+    std::string text{"Жду мост Lua ASHES"};
 };
 std::mutex g_loaderMutex;
 LoaderInfo g_loader;

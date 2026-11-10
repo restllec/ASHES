@@ -260,8 +260,8 @@ local rayMode = 0
 local seeVehiclesAndPeds = false
 local sirenBlock20s = true
 local blockStartTick = 0
-local passengerAlert = false
-local ignoreNearChat = false
+local passengerAlert = true
+local ignoreNearChat = true
 local passengerAlerted = false
 local lastCollisionTick = 0
 local collisionContacts = setmetatable({}, {__mode="k"})
@@ -528,7 +528,7 @@ local function releaseKeys()
 end
 
 local function inputBlocked()
-    return api.menuOpen() or isChatBoxInputActive()
+    return isChatBoxInputActive()
 end
 
 local function safeDriveKey(key, pressed)
@@ -661,6 +661,9 @@ local function createMarkerCollider()
         setElementInterior(markerCol, trainInterior)
         markerDebug = {x=x, y=y, z=z, radius=radius}
         local hooked = addHandler("onClientColShapeHit", markerCol, onMarkerHit)
+        if isElementWithinColShape(train, markerCol) then
+            onMarkerHit(train)
+        end
         debugOutput(string.format(
             "Колшейп создан: xyz=%.2f/%.2f/%.2f radius=%.1f distance=%.1f candidates=%d "
                 .. "rejected=%d dim=%d int=%d handler=%s",
@@ -690,7 +693,7 @@ local function drawDebugCollider()
 end
 
 local function pulseKey(key, after)
-    local pressed = safeDriveKey(key, true)
+    local pressed = setDriveKey(key, true, true)
     debugOutput(string.format("Импульс %s: down=%s", key, tostring(pressed == true)))
     if not pressed then
         return false
@@ -701,7 +704,7 @@ local function pulseKey(key, after)
         if after then
             after()
         end
-    end, math.random(30, 100), 1)
+    end, math.random(140, 200), 1)
     return true
 end
 
@@ -725,25 +728,26 @@ local function handleDoors(continueRoute, generation)
             return
         end
         schedule(function()
-            if generation ~= doorGeneration or doorPoint ~= currentPoint then
+            if generation ~= doorGeneration then
                 debugOutput("Двери: запуск отменён новой дверной операцией")
                 return
             end
-            if botState ~= "STOPPED" or not currentPoint or currentPoint[2] ~= "marker" then
-                return
-            end
-            if not currentPoint.closeRequested then
-                debugOutput("Отказываюсь трогаться: сервер не запрашивал закрытие дверей")
+            local target = currentPoint or doorPoint or (activeRoute[1] and activeRoute[1][2] == "marker" and activeRoute[1])
+            if not target or target[2] ~= "marker" then
                 return
             end
             doorPhase = "closed"
-            local removed = table.remove(activeRoute, 1)
-            debugOutput("Двери закрыты, защитная пауза пройдена; удаляю остановку " .. pointText(removed)
-                .. "; осталось точек=" .. tostring(#activeRoute))
-            currentPoint.forceStopped = nil
-            currentPoint.forceStop = nil
-            currentPoint.correctionReversed = nil
-            currentPoint.retryCount = nil
+            if activeRoute[1] == target then
+                local removed = table.remove(activeRoute, 1)
+                debugOutput("Двери закрыты, защитная пауза пройдена; удаляю остановку " .. pointText(removed)
+                    .. "; осталось точек=" .. tostring(#activeRoute))
+            end
+            target.forceStopped = nil
+            target.forceStop = nil
+            target.correctionReversed = nil
+            target.retryCount = nil
+            target.closeRequested = nil
+            target.serverConfirmed = nil
             destroyMarker(true)
             currentPoint = nil
             botState = "MOVING"
@@ -866,6 +870,9 @@ local function onNotification(message)
         return
     end
     debugOutput("Уведомление province_tram: " .. message)
+    if not currentPoint and activeRoute[1] and activeRoute[1][2] == "marker" then
+        currentPoint = activeRoute[1]
+    end
     if string.find(message, "Заработано:", 1, true) then
         updateMoney(extractMoney(message))
         debugOutput("Обновлён заработок: " .. money)
@@ -888,15 +895,16 @@ local function onNotification(message)
         doorPhase = "closing"
         debugOutput("Решение: закрыть двери и удалить текущую остановку")
         queueDoorAction(true, 80, 180, "сервер запросил закрытие")
-    elseif string.find(message, "Вы уехали не закрыв дверь", 1, true)
-        and currentPoint and currentPoint[2] == "marker" then
-        debugOutput("Ошибка двери во время остановки: маршрут НЕ двигаю, отменяю старый таймер и повторяю закрытие")
+    elseif string.find(message, "Вы уехали не закрыв дверь", 1, true) then
+        debugOutput("Ошибка двери во время остановки: маршрут НЕ двигаю, повторяю закрытие")
         setDriveKey("W", false, true)
         setDriveKey("S", false, true)
         setTrainSpeed(train, 0)
         botState = "STOPPED"
-        currentPoint.serverConfirmed = true
-        currentPoint.closeRequested = true
+        if currentPoint then
+            currentPoint.serverConfirmed = true
+            currentPoint.closeRequested = true
+        end
         doorPhase = "closing"
         queueDoorAction(true, 80, 180, "повтор после ошибки двери")
     elseif string.find(message, "Вы пропустили остановку", 1, true)
@@ -999,6 +1007,10 @@ local function trafficGreen(expected)
 end
 
 local function scanPassengers()
+    if not passengerAlert then
+        passengerAlerted = false
+        return
+    end
     local vehicle = train
     local safety = 1
     while isElement(vehicle) and safety < 64 do
@@ -1008,7 +1020,7 @@ local function scanPassengers()
                 if player ~= localPlayer then
                     if not passengerAlerted then
                         notify(getPlayerNametagText(player) .. " вошёл в состав, место " .. tostring(seat) .. ".")
-                        api.alert()
+                        if sirenEnabled then api.alert() end
                         passengerAlerted = true
                     end
                     return
@@ -1115,12 +1127,12 @@ local function onBrakeRender()
     end
     if not isElement(train) or getPedOccupiedVehicle(localPlayer) ~= train then
         stopBot("Вероятно, вас высадил администратор.")
-        api.alert()
+        if sirenEnabled then api.alert() end
         return
     end
     local blocked = inputBlocked()
     debugChange("input", blocked, blocked and
-        "Управление приостановлено: открыто меню DarkFlame или чат"
+        "Управление приостановлено: открыто меню ASHES или чат"
         or "Управление доступно: меню и чат закрыты")
     if blocked then
         setDriveKey("W", false)
@@ -1294,6 +1306,14 @@ local function onBrakeRender()
                 createMarkerCollider()
                 botState = "MOVING"
                 debugOutput("Колшейп потерян: пересоздан, включаю доводку")
+            elseif doorPhase == "open" and stoppedTick and now - stoppedTick > 8000 then
+                debugOutput("Таймаут посадки пассажиров: принудительно закрываю двери")
+                doorPhase = "closing"
+                queueDoorAction(true, 100, 200, "таймаут посадки 8с")
+            elseif doorPhase == "idle" and stoppedTick and now - stoppedTick > 4000 then
+                debugOutput("Остановка зафиксирована, но двери не открыты: пробую открыть")
+                doorPhase = "opening"
+                queueDoorAction(false, 100, 200, "таймаут открытия 4с")
             elseif stoppedTick and now - stoppedTick > 20000 then
                 debugOutput("Сервер не подтвердил остановку за 20с: повторяю вход в колшейп")
                 markerEntered = false
@@ -1484,9 +1504,14 @@ end
 local smoothBrakeTimer = nil
 
 local function onForceStop()
-    if not forceStopper or not isElement(train) then
+    if not forceStopper then
         return
     end
+    local veh = isElement(train) and train or getPedOccupiedVehicle(localPlayer)
+    if not isElement(veh) or getVehicleType(veh) ~= "Train" then
+        return
+    end
+    train = veh
 
     if isTimer(smoothBrakeTimer) then
         killTimer(smoothBrakeTimer)
@@ -1810,10 +1835,11 @@ local function handleCommand(command)
         if clearChatBox then
             clearChatBox()
         end
-    elseif name == "route" then
-        startJob(value)
-    elseif name == "take_route" then
-        if routeKey then startJob(routeKey) end
+    elseif name == "select_route" then
+        selectRoute(value, true)
+    elseif name == "route" or name == "take_route" then
+        local key = (value and value ~= "") and value or routeKey
+        if key then startJob(key) end
     elseif name == "save_marker" then
         saveRoutePoint("marker", "228")
     elseif name == "save_traffic" then
@@ -1832,7 +1858,7 @@ local function handleCommand(command)
         local played = api.alert()
         debugOutput("Тест сирены: dfPlayAlertSignal вернул " .. tostring(played == true))
         if not played then
-            notify("Не удалось запустить сирену — смотри DarkFlame.log", true)
+            notify("Не удалось запустить сирену — смотри Ashes.log", true)
         end
     elseif name == "admin" or name == "test_admin" then
         local adminMsg = value ~= "" and tostring(value) or "Тест проверки администратора"

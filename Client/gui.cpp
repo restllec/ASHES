@@ -1090,6 +1090,24 @@ void SavePolivTramSettings(int distMode, bool autoDist)
     WritePrivateProfileStringW(L"PolivTram", L"DistanceMode", std::to_wstring(distMode).c_str(), ini.c_str());
     WritePrivateProfileStringW(L"PolivTram", L"AutoDistance", autoDist ? L"1" : L"0", ini.c_str());
 }
+
+static void SyncTramSettingsToLua(const TramState& state)
+{
+    QueueTramCommand(std::string("siren:") + (s_tramSirenGeneral ? "1" : "0"));
+    QueueTramCommand(std::string("ignore_near_chat:") + (s_tramIgnoreNearChat ? "1" : "0"));
+    QueueTramCommand(std::string("passenger_alert:") + (s_tramPassengerAlert ? "1" : "0"));
+    QueueTramCommand(std::string("siren_dtp:") + (s_tramDtpSiren ? "1" : "0"));
+    QueueTramCommand(std::string("siren_block_20s:") + (s_tramSirenBlock20s ? "1" : "0"));
+    QueueTramCommand(std::string("dtp_reaction:") + std::to_string(s_tramDtpReaction));
+    QueueTramCommand(std::string("ray_mode:") + std::to_string(s_tramRayMode));
+    QueueTramCommand(std::string("see_peds_cars:") + (s_tramSeeVehiclesAndPeds ? "1" : "0"));
+    QueueTramCommand(std::string("space_stop:") + (s_tramSpaceStop ? "1" : "0"));
+    QueueTramCommand(std::string("autolights:") + (state.autoLights ? "1" : "0"));
+    QueueTramCommand(std::string("silent_chat:") + (state.silentChat ? "1" : "0"));
+    QueueTramCommand(std::string("autodist:") + (state.autoDistance ? "1" : "0"));
+    QueueTramCommand(std::string("distmode:") + std::to_string(state.distanceMode));
+    QueueTramCommand(std::string("autostop_min:") + std::to_string(state.autoStopMinutes));
+}
 }
 
 void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
@@ -1111,6 +1129,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         const auto& initRoute = s_tramRoutes[s_selectedTramRouteIndex];
         g_tramState.subMode = initRoute.subMode;
         state.subMode = initRoute.subMode;
+        SyncTramSettingsToLua(state);
         s_settingsLoaded = true;
     }
 
@@ -1217,6 +1236,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 
                 if(sel.subMode == 0)
                 {
+                    SyncTramSettingsToLua(state);
                     QueueTramCommand("route:" + std::string(sel.key));
                     QueueTramCommand("bot:1");
                 }
@@ -1292,9 +1312,9 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         SaveTramSettings(state.autoStopMinutes, state.distanceMode, state.autoDistance, state.autoLights, state.silentChat, s_selectedTramRouteIndex);
     };
 
-    // Левая колонка (45% ширины): 7 карточек параметров со скроллингом
+    // Левая колонка (45% ширины): карточки параметров со скроллингом
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 8.0f * scale));
-    ImGui::BeginChild("##tram_col_left", ImVec2(leftColW, -1.0f), false, ImGuiWindowFlags_NoScrollbar);
+    ImGui::BeginChild("##tram_col_left", ImVec2(leftColW, -1.0f), false, 0);
 
     // 1. Карточка «Работа»
     BeginCard("##card_tram_work", TramIcons::DrawGear, "Работа", "Основные настройки запуска и маршрута");
@@ -1352,7 +1372,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
                 }
                 else if(r.subMode == 0 && r.key && r.key[0])
                 {
-                    QueueTramCommand(std::string("route:") + r.key);
+                    QueueTramCommand(std::string("select_route:") + r.key);
                 }
             }
             if(isSel) ImGui::SetItemDefaultFocus();
@@ -1501,7 +1521,7 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
 
     // Правая колонка (55% ширины): Мониторинг и Журнал событий
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 8.0f * scale));
-    ImGui::BeginChild("##tram_col_right", ImVec2(rightColW, -1.0f), false, ImGuiWindowFlags_NoScrollbar);
+    ImGui::BeginChild("##tram_col_right", ImVec2(rightColW, -1.0f), false, 0);
 
     // 1. Карточка «Текущее состояние» (высота по контенту)
     BeginCard("##card_tram_status", TramIcons::DrawChart, "Текущее состояние", nullptr, 0.0f);
@@ -2475,6 +2495,12 @@ static std::deque<GuiToastMessage> g_toastQueue;
 static std::vector<GuiToastMessage> g_activeToasts;
 static std::string g_lastToastMsg;
 static std::chrono::steady_clock::time_point g_lastToastTime{};
+
+static bool HasActiveToasts()
+{
+    std::scoped_lock lock(g_toastMutex);
+    return !g_toastQueue.empty() || !g_activeToasts.empty();
+}
 
 void InternalPushToast(std::string_view title, std::string_view message, std::string_view type, float durationSec)
 {
@@ -3778,7 +3804,7 @@ void DrawMiscTab(ImVec2 position, ImVec2 size, float scale)
         ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Тестирование уведомлений:");
         const float tBtnW = (colW - 20.0f * scale - 12.0f * scale) / 4.0f;
         if(ImGui::Button("Инфо##t_info", ImVec2(tBtnW, 22.0f * scale)))
-            GuiPushToast("Тестовое уведомление", "Система DarkFlame активна и работает стабильно", "info", g_toastConfig.durationSec);
+            GuiPushToast("Тестовое уведомление", "Система ASHES активна и работает стабильно", "info", g_toastConfig.durationSec);
         ImGui::SameLine(0, 4.0f * scale);
         if(ImGui::Button("Успех##t_succ", ImVec2(tBtnW, 22.0f * scale)))
             GuiPushToast("Рейс завершен", "Маршрут выполнен, смена закрыта", "success", g_toastConfig.durationSec);
@@ -4125,7 +4151,7 @@ void RenderFrame(IDirect3DDevice9* device)
         }
     }
     const bool hudActive = (db.hudEnabled && (onlineCount > 0 || db.hudConfigMode));
-    const bool toastActive = db.IsToastActive();
+    const bool toastActive = db.IsToastActive() || HasActiveToasts();
 
     if(!menuOpen && !hudActive && !toastActive)
     {

@@ -497,7 +497,7 @@ void DrawLicenseCard(ImDrawList* draw, ImVec2 cardPos, float width)
         {
             if(LoaderLicense::ValidateKey(g_license, key))
             {
-                LoaderLicense::SaveLicenseToFile(g_directory, key);
+                LoaderLicense::SaveLicenseToFile(g_directory, key, g_license.hwid, g_license.expire_date);
                 g_config.licenseKey = key;
                 Config::Save(g_directory, g_config);
             }
@@ -1681,6 +1681,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     {
         if(LoaderLicense::ValidateKey(g_license, savedKey))
         {
+            LoaderLicense::SaveLicenseToFile(g_directory, savedKey, g_license.hwid, g_license.expire_date);
             std::snprintf(g_keyInput, sizeof(g_keyInput), "%s", savedKey.c_str());
         }
         else

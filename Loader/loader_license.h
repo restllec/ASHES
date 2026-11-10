@@ -125,15 +125,32 @@ inline std::string GenerateHWID(std::string& outMac)
     return buf;
 }
 
-inline void SaveLicenseToFile(const std::wstring& directory, const std::string& key)
+inline std::string ComputeLicenseSignature(const std::string& key, const std::string& hwid, const std::string& expires)
 {
+    uint64_t hash = Fnv1aHash(key + "|" + hwid + "|" + expires + "|DARKFLAME_ASHES_PRO_2026");
+    char buf[32]{};
+    std::snprintf(buf, sizeof(buf), "%016llX", static_cast<unsigned long long>(hash));
+    return buf;
+}
+
+inline void SaveLicenseToFile(const std::wstring& directory, const std::string& key, const std::string& hwid = "", const std::string& expires = "")
+{
+    std::string actualHwid = hwid;
+    if (actualHwid.empty() && !key.empty())
+    {
+        std::string dummy;
+        actualHwid = GenerateHWID(dummy);
+    }
+    std::string sig = key.empty() ? "" : ComputeLicenseSignature(key, actualHwid, expires);
+
     for (const wchar_t* name : { L"\\Ashes_license.cfg", L"\\DarkFlame_license.cfg" })
     {
         std::wstring licPath = directory + name;
         std::ofstream lf(licPath);
         if (lf.is_open())
         {
-            lf << key;
+            if (!key.empty())
+                lf << key << "\n" << expires << "\n" << sig << "\n";
             lf.close();
         }
     }
@@ -236,8 +253,9 @@ inline bool ValidateKey(State& state, const std::string& key)
         return false;
     }
 
-    HINTERNET hSession = WinHttpOpen(L"ASHES-Loader/1.0",
-        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    HINTERNET hSession = WinHttpOpen(
+        L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!hSession)
     {
         state.is_pro = false;
@@ -246,7 +264,9 @@ inline bool ValidateKey(State& state, const std::string& key)
         return false;
     }
 
-    WinHttpSetTimeouts(hSession, 3000, 4000, 5000, 5000);
+    DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
+    WinHttpSetOption(hSession, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
+    WinHttpSetTimeouts(hSession, 10000, 10000, 10000, 15000);
 
     HINTERNET hConnect = WinHttpConnect(hSession, L"ashes-licensing.vercel.app", INTERNET_DEFAULT_HTTPS_PORT, 0);
     bool verified = false;
@@ -259,6 +279,15 @@ inline bool ValidateKey(State& state, const std::string& key)
             nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
         if (hRequest)
         {
+            DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+            WinHttpSetOption(hRequest, WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy));
+
+            DWORD secFlags = SECURITY_FLAG_IGNORE_UNKNOWN_CA |
+                             SECURITY_FLAG_IGNORE_CERT_DATE_INVALID |
+                             SECURITY_FLAG_IGNORE_CERT_CN_INVALID |
+                             SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
+            WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &secFlags, sizeof(secFlags));
+
             std::string jsonBody = "{\"key\":\"" + key + "\",\"hwid\":\"" + state.hwid + "\"}";
             const wchar_t* headers = L"Content-Type: application/json\r\n";
             if (WinHttpSendRequest(hRequest, headers, static_cast<DWORD>(-1L),
