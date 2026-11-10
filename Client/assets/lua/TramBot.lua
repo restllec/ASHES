@@ -257,7 +257,7 @@ local dtpReaction = 0
 local dtpSiren = true
 local dtpPauseUntil = 0
 local rayMode = 0
-local seeVehiclesAndPeds = true
+local seeVehiclesAndPeds = false
 local sirenBlock20s = true
 local blockStartTick = 0
 local passengerAlert = false
@@ -1078,12 +1078,12 @@ local function checkTrainDistance()
                 local dx = tx - myX
                 local dy = ty - myY
                 local dist = math.sqrt(dx * dx + dy * dy)
-                if dist <= maxScanDist and dist > 1.0 then
+                if dist <= 65.0 and dist > 1.2 then
                     local dot = dx * fwdX + dy * fwdY
                     if dot > 0 then
                         local perp = math.abs(dx * (-fwdY) + dy * fwdX)
-                        local allowedPerp = isTrain and 3.5 or 2.8
-                        if perp <= allowedPerp then
+                        local maxAllowedPerp = isTrain and 3.0 or 1.6
+                        if perp <= maxAllowedPerp then
                             if isTrain then
                                 local _, _, tgtRotZ = getElementRotation(veh)
                                 local diffAngle = math.abs((myRotZ - tgtRotZ + 180) % 360 - 180)
@@ -1095,28 +1095,6 @@ local function checkTrainDistance()
                                 closestDist = dist
                                 found = true
                             end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    if seeVehiclesAndPeds and closestDist > 15 then
-        local peds = getElementsByType("player")
-        for _, ped in ipairs(peds) do
-            if ped ~= localPlayer and isElement(ped) and not isPedInVehicle(ped) then
-                local px, py, pz = getElementPosition(ped)
-                local dx = px - myX
-                local dy = py - myY
-                local dist = math.sqrt(dx * dx + dy * dy)
-                if dist <= maxScanDist and dist > 1.0 then
-                    local dot = dx * fwdX + dy * fwdY
-                    if dot > 0 then
-                        local perp = math.abs(dx * (-fwdY) + dy * fwdX)
-                        if perp <= 2.2 and dist < closestDist then
-                            closestDist = dist
-                            found = true
                         end
                     end
                 end
@@ -1329,16 +1307,14 @@ local function onBrakeRender()
     if autoDistance and isElement(train) then
         local aheadDist = checkTrainDistance()
         if aheadDist then
-            local safeGap = (distanceMode == 1 and 18) or (distanceMode == 3 and 54) or 36
-            local brakePath = brakeDistance(speed)
-            local brakeStart = safeGap + brakePath + 3
-            local coastStart = safeGap + 10
+            local safeGap = (distanceMode == 1 and 16) or (distanceMode == 3 and 48) or 32
+            local distCoast = safeGap + 15
+            local distBrake = safeGap + 4
 
             if aheadDist <= safeGap then
                 distanceHold = true
                 desiredW = false
-                desiredS = false
-                setTrainSpeed(train, 0)
+                desiredS = true
                 if blockStartTick == 0 then
                     blockStartTick = now
                 elseif sirenBlock20s and (now - blockStartTick >= 20000) then
@@ -1349,28 +1325,28 @@ local function onBrakeRender()
                         if sirenEnabled then api.alert() end
                     end
                 end
-                debugRate("dist_hold", 1500, string.format("Авто-дистанция: СТОП! Препятствие: %.1fм (порог <= %.1fм)", aheadDist, safeGap))
-            elseif aheadDist <= brakeStart then
+                debugRate("dist_hold", 1500, string.format("Авто-дистанция: СТОП! Впереди: %.1fм (порог <= %.1fм)", aheadDist, safeGap))
+            elseif aheadDist <= distBrake then
                 blockStartTick = 0
-                local currentSpeed = math.abs(speed)
-                local availableGap = math.max(0, aheadDist - safeGap)
-                local brakingRatio = math.min(1, availableGap / math.max(1, brakePath + 3))
-                local targetSpeed = currentSpeed * brakingRatio
+                desiredW = false
+                desiredS = true
+                debugRate("dist_brake", 1500, string.format("Авто-дистанция: ТОРМОЗ! Состав впереди: %.1fм (порог <= %.1fм)", aheadDist, distBrake))
+            elseif aheadDist <= distCoast then
+                blockStartTick = 0
                 desiredW = false
                 desiredS = false
-                if targetSpeed < currentSpeed - 0.01 then
-                    setTrainSpeed(train, math.max(0.02, targetSpeed))
-                end
-                debugRate("dist_brake", 1500, string.format("Авто-дистанция: СБРОС! Состав: %.1fм (порог <= %.1fм)", aheadDist, brakeStart))
-            elseif aheadDist <= coastStart then
-                desiredW = false
-                desiredS = false
-                debugRate("dist_coast", 1500, string.format("Авто-дистанция: НАКАТ! Состав впереди: %.1fм (порог <= %.1fм)", aheadDist, coastStart))
+                debugRate("dist_coast", 1500, string.format("Авто-дистанция: НАКАТ! Состав впереди: %.1fм (порог <= %.1fм)", aheadDist, distCoast))
             elseif distanceHold then
+                blockStartTick = 0
                 distanceHold = false
                 desiredS = false
                 desiredW = true
-                debugRate("dist_resume", 1500, "Авто-дистанция: состав ушёл, едем дальше")
+                debugRate("dist_resume", 1500, "Авто-дистанция: путь свободен, продолжаем движение")
+            end
+        else
+            blockStartTick = 0
+            if distanceHold then
+                distanceHold = false
             end
         end
     end

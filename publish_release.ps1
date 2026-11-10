@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$Version = "1.8.4",
+    [string]$Version = "1.8.5",
     [string]$Title = "ASHES v$Version (PolivTram Multi-Route, Tram Distance & GUI Alignment)",
     [string]$Notes = "Release v$($Version) - PolivTram lifecycle & multi-route fixes, TramBot wagon distance control, unified toast notification queue, and Loader/Client UI layout alignment.",
     [switch]$SkipBuild
