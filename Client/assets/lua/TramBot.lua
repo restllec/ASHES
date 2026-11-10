@@ -1481,17 +1481,59 @@ local function startBot()
     return true
 end
 
+local smoothBrakeTimer = nil
+
 local function onForceStop()
-    if forceStopper and isElement(train) then
-        setTrainSpeed(train, 0)
-        setDriveKey("W", false, true)
-        setDriveKey("S", true, true)
-        if botEnabled then
-            stopBot("Экстренная остановка (Пробел)")
-        else
-            notify("Экстренное торможение (Пробел)", true)
-        end
+    if not forceStopper or not isElement(train) then
+        return
     end
+
+    if isTimer(smoothBrakeTimer) then
+        killTimer(smoothBrakeTimer)
+        smoothBrakeTimer = nil
+    end
+
+    if botEnabled then
+        stopBot("Экстренная остановка (Пробел)")
+    else
+        notify("Экстренное торможение (Пробел)", true)
+    end
+
+    setDriveKey("W", false, true)
+    setDriveKey("S", true, true)
+
+    local initialSpeed = getTrainSpeed(train) or 0
+    local startTick = getTickCount()
+    local durationMs = 800
+
+    if math.abs(initialSpeed) <= 0.01 then
+        setTrainSpeed(train, 0)
+        setDriveKey("S", false, true)
+        setDriveKey("W", false, true)
+        return
+    end
+
+    smoothBrakeTimer = setTimer(function()
+        if not isElement(train) then
+            if isTimer(smoothBrakeTimer) then killTimer(smoothBrakeTimer) end
+            smoothBrakeTimer = nil
+            return
+        end
+
+        local elapsed = getTickCount() - startTick
+        local progress = elapsed / durationMs
+
+        if progress >= 1.0 or math.abs(getTrainSpeed(train) or 0) <= 0.01 then
+            if isTimer(smoothBrakeTimer) then killTimer(smoothBrakeTimer) end
+            smoothBrakeTimer = nil
+            setTrainSpeed(train, 0)
+            setDriveKey("S", false, true)
+            setDriveKey("W", false, true)
+        else
+            local factor = math.max(0, 1.0 - progress)
+            setTrainSpeed(train, initialSpeed * factor)
+        end
+    end, 50, 17)
 end
 
 -- Integrated braking calibrator.
@@ -1836,6 +1878,10 @@ local function cleanup()
         eventCatcher = nil
     end
     unbindKey("space", "down", onForceStop)
+    if isTimer(smoothBrakeTimer) then
+        killTimer(smoothBrakeTimer)
+        smoothBrakeTimer = nil
+    end
     for timer in pairs(timers) do
         if isTimer(timer) then
             killTimer(timer)
