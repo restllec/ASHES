@@ -262,6 +262,7 @@ local sirenBlock20s = true
 local blockStartTick = 0
 local passengerAlert = true
 local ignoreNearChat = true
+local emergencyHold = false
 local passengerAlerted = false
 local lastCollisionTick = 0
 local collisionContacts = setmetatable({}, {__mode="k"})
@@ -1153,6 +1154,16 @@ local function onBrakeRender()
         end
     end
 
+    if emergencyHold then
+        setDriveKey("W", false)
+        setDriveKey("S", false)
+        if isElement(train) and math.abs(getTrainSpeed(train) or 0) <= 0.01 then
+            setTrainSpeed(train, 0)
+        end
+        debugRate("emerg_hold", 2000, "Стоп-кран активен. Нажмите Пробел для продолжения.")
+        return
+    end
+
     local position = getTrainPosition(train)
     local speed = math.abs(getTrainSpeed(train) or 0)
     if not position then
@@ -1334,7 +1345,12 @@ local function onBrakeRender()
             if aheadDist <= safeGap then
                 distanceHold = true
                 desiredW = false
-                desiredS = true
+                if speed <= 0.01 then
+                    desiredS = false
+                    setTrainSpeed(train, 0)
+                else
+                    desiredS = true
+                end
                 if blockStartTick == 0 then
                     blockStartTick = now
                 elseif sirenBlock20s and (now - blockStartTick >= 20000) then
@@ -1349,7 +1365,12 @@ local function onBrakeRender()
             elseif aheadDist <= distBrake then
                 blockStartTick = 0
                 desiredW = false
-                desiredS = true
+                if speed <= 0.01 then
+                    desiredS = false
+                    setTrainSpeed(train, 0)
+                else
+                    desiredS = true
+                end
                 debugRate("dist_brake", 1500, string.format("Авто-дистанция: ТОРМОЗ! Состав впереди: %.1fм (порог <= %.1fм)", aheadDist, distBrake))
             elseif aheadDist <= distCoast then
                 blockStartTick = 0
@@ -1371,6 +1392,10 @@ local function onBrakeRender()
         end
     end
 
+    if desiredS and speed <= 0.005 then
+        desiredS = false
+        setTrainSpeed(train, 0)
+    end
     debugChange("drive", tostring(desiredW) .. ":" .. tostring(desiredS),
         string.format("Команды движения: W=%s, S=%s", tostring(desiredW), tostring(desiredS)))
     safeDriveKey("W", desiredW)
@@ -1428,6 +1453,7 @@ stopBot = function(reason)
         removeHandler("onClientRender", root, onBrakeRender)
     end
     botState = "IDLE"
+    emergencyHold = false
     doorGeneration = doorGeneration + 1
     doorPhase = "idle"
     releaseKeys()
@@ -1470,6 +1496,8 @@ local function startBot()
     if #activeRoute == 0 and not generateRoute(direction) then
         return false
     end
+    recoverRoute()
+    emergencyHold = false
     botEnabled = true
     botState = "MOVING"
     stopFrameCount = 0
@@ -1519,7 +1547,18 @@ local function onForceStop()
     end
 
     if botEnabled then
-        stopBot("Экстренная остановка (Пробел)")
+        if emergencyHold then
+            emergencyHold = false
+            botState = "MOVING"
+            notify("Стоп-кран отпущен: продолжаем маршрут")
+            setDriveKey("S", false, true)
+            setDriveKey("W", true, true)
+            return
+        else
+            emergencyHold = true
+            botState = "EMERGENCY_HOLD"
+            notify("Стоп-кран: экстренное торможение (Пробел)", true)
+        end
     else
         notify("Экстренное торможение (Пробел)", true)
     end
@@ -1779,7 +1818,14 @@ local function handleCommand(command)
         api.updateState("submode", tostring(value))
     elseif name == "bot" then
         if value == "1" then
-            startBot()
+            if emergencyHold then
+                emergencyHold = false
+                botState = "MOVING"
+                notify("Стоп-кран отпущен: продолжаем маршрут")
+                setDriveKey("W", true, true)
+            else
+                startBot()
+            end
         else
             stopBot()
         end

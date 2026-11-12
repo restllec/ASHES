@@ -263,6 +263,44 @@ struct TaxiClickerConfig
     std::string status{"Кликер отключен"};
 };
 TaxiClickerConfig g_taxiClicker;
+
+struct StroikaState
+{
+    bool loaded{false};
+    bool bot{false};
+    int delay{14500};
+    bool godmode{true};
+    std::string checkpoints{"0"};
+    std::string rubles{"0"};
+    std::string status{"Ожидание запуска"};
+};
+StroikaState g_stroikaState;
+StroikaState g_visibleStroikaState;
+std::deque<std::string> g_stroikaCommands;
+bool g_stroikaDirty{true};
+
+struct MiscState
+{
+    bool loaded{false};
+    bool legitRepair{false};
+    bool carGm{false};
+    bool playerGm{false};
+    bool noCollision{false};
+    bool antiFine{true};
+    int taranStrength{3};
+    int taranDelay{50};
+    bool camHack{false};
+    float camSpeed{0.5f};
+    float camSmooth{5.0f};
+    std::string camX{"0.0"};
+    std::string camY{"0.0"};
+    std::string camZ{"0.0"};
+};
+MiscState g_miscState;
+MiscState g_visibleMiscState;
+std::deque<std::string> g_miscCommands;
+bool g_miscDirty{true};
+
 char g_targetResource[128]{"province_ac"};
 std::uintptr_t g_selectedThread{};
 std::uintptr_t g_pendingUnload{};
@@ -909,6 +947,40 @@ void SyncTaxiState()
     g_taxiDirty = false;
 }
 
+void QueueStroikaCommand(std::string command)
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    if(g_stroikaCommands.size() >= 64)
+        g_stroikaCommands.pop_front();
+    g_stroikaCommands.push_back(std::move(command));
+}
+
+void SyncStroikaState()
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    if(!g_stroikaDirty)
+        return;
+    g_visibleStroikaState = g_stroikaState;
+    g_stroikaDirty = false;
+}
+
+void QueueMiscCommand(std::string command)
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    if(g_miscCommands.size() >= 64)
+        g_miscCommands.pop_front();
+    g_miscCommands.push_back(std::move(command));
+}
+
+void SyncMiscState()
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    if(!g_miscDirty)
+        return;
+    g_visibleMiscState = g_miscState;
+    g_miscDirty = false;
+}
+
 void TramButton(const char* label, const char* command)
 {
     if(ImGui::Button(label))
@@ -924,6 +996,9 @@ void TramToggle(const char* label, bool& value, const char* command)
 void RenderProLockOverlay(ImVec2 origin, ImVec2 size, float scale);
 void DrawLicenseTab(ImVec2 position, ImVec2 size, float scale);
 void DrawWoodBot(ImVec2 position, ImVec2 size, float scale);
+void DrawStroikaBot(ImVec2 position, ImVec2 size, float scale);
+void DrawMiscTab(ImVec2 position, ImVec2 size, float scale);
+void DrawSettingsTab(ImVec2 position, ImVec2 size, float scale);
 void DrawTaxiTab(ImVec2 position, ImVec2 size, float scale);
 
 namespace
@@ -1756,12 +1831,14 @@ void DrawJbkBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PushStyleColor(ImGuiCol_CheckMark, g_Theme.AccentU32());
     ImGui::PushStyleColor(ImGuiCol_Separator, IM_COL32(80, 80, 80, 180));
     ImGui::BeginChild("##jbk_bot", size, ImGuiChildFlags_Borders);
-    float segW = (ImGui::GetContentRegionAvail().x - 12.0f * scale) / 3.0f;
+    float segW = (ImGui::GetContentRegionAvail().x - 18.0f * scale) / 4.0f;
     if(XoneButton("Завод ЖБК", scale, g_factoryMode == 0, segW, 26.0f)) g_factoryMode = 0;
     ImGui::SameLine(0, 6.0f * scale);
     if(XoneButton("Табачная фабрика", scale, g_factoryMode == 1, segW, 26.0f)) g_factoryMode = 1;
     ImGui::SameLine(0, 6.0f * scale);
     if(XoneButton("Лесоруб", scale, g_factoryMode == 2, segW, 26.0f)) g_factoryMode = 2;
+    ImGui::SameLine(0, 6.0f * scale);
+    if(XoneButton("Стройка", scale, g_factoryMode == 3, segW, 26.0f)) g_factoryMode = 3;
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
@@ -1937,12 +2014,14 @@ void DrawTobaccoBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PushStyleColor(ImGuiCol_CheckMark, g_Theme.AccentU32());
     ImGui::PushStyleColor(ImGuiCol_Separator, IM_COL32(80, 80, 80, 180));
     ImGui::BeginChild("##tobacco_bot", size, ImGuiChildFlags_Borders);
-    float segW = (ImGui::GetContentRegionAvail().x - 12.0f * scale) / 3.0f;
+    float segW = (ImGui::GetContentRegionAvail().x - 18.0f * scale) / 4.0f;
     if(XoneButton("Завод ЖБК", scale, g_factoryMode == 0, segW, 26.0f)) g_factoryMode = 0;
     ImGui::SameLine(0, 6.0f * scale);
     if(XoneButton("Табачная фабрика", scale, g_factoryMode == 1, segW, 26.0f)) g_factoryMode = 1;
     ImGui::SameLine(0, 6.0f * scale);
     if(XoneButton("Лесоруб", scale, g_factoryMode == 2, segW, 26.0f)) g_factoryMode = 2;
+    ImGui::SameLine(0, 6.0f * scale);
+    if(XoneButton("Стройка", scale, g_factoryMode == 3, segW, 26.0f)) g_factoryMode = 3;
     ImGui::Spacing();
 
     float contentW = ImGui::GetContentRegionAvail().x;
@@ -2138,8 +2217,10 @@ void DrawFactoryBot(ImVec2 position, ImVec2 size, float scale)
         DrawJbkBot(position, size, scale);
     else if(g_factoryMode == 1)
         DrawTobaccoBot(position, size, scale);
-    else
+    else if(g_factoryMode == 2)
         DrawWoodBot(position, size, scale);
+    else
+        DrawStroikaBot(position, size, scale);
 }
 
 void DrawWoodBot(ImVec2 position, ImVec2 size, float scale)
@@ -2158,12 +2239,14 @@ void DrawWoodBot(ImVec2 position, ImVec2 size, float scale)
     ImGui::PushStyleColor(ImGuiCol_CheckMark, g_Theme.AccentU32());
     ImGui::PushStyleColor(ImGuiCol_Separator, IM_COL32(80, 80, 80, 180));
     ImGui::BeginChild("##lesorub_bot", size, ImGuiChildFlags_Borders);
-    float segW = (ImGui::GetContentRegionAvail().x - 12.0f * scale) / 3.0f;
+    float segW = (ImGui::GetContentRegionAvail().x - 18.0f * scale) / 4.0f;
     if(XoneButton("Завод ЖБК", scale, g_factoryMode == 0, segW, 26.0f)) g_factoryMode = 0;
     ImGui::SameLine(0, 6.0f * scale);
     if(XoneButton("Табачная фабрика", scale, g_factoryMode == 1, segW, 26.0f)) g_factoryMode = 1;
     ImGui::SameLine(0, 6.0f * scale);
     if(XoneButton("Лесоруб", scale, g_factoryMode == 2, segW, 26.0f)) g_factoryMode = 2;
+    ImGui::SameLine(0, 6.0f * scale);
+    if(XoneButton("Стройка", scale, g_factoryMode == 3, segW, 26.0f)) g_factoryMode = 3;
     ImGui::Spacing();
 
     float contentW = ImGui::GetContentRegionAvail().x;
@@ -2327,6 +2410,169 @@ void DrawWoodBot(ImVec2 position, ImVec2 size, float scale)
         ImGui::TextColored(ImVec4(0.35f, 0.78f, 0.98f, 1.0f), "[Этап] Текущее состояние: %s", state.status.c_str());
         if(isRunning)
             ImGui::TextColored(ImVec4(0.35f, 0.88f, 0.65f, 1.0f), "[Движение] Автоматический цикл активен");
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    EndCard();
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor(9);
+    ImGui::PopStyleVar();
+}
+
+void DrawStroikaBot(ImVec2 position, ImVec2 size, float scale)
+{
+    SyncStroikaState();
+    StroikaState& state = g_visibleStroikaState;
+    ImGui::SetCursorScreenPos(position);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 18, 135));
+    ImGui::PushStyleColor(ImGuiCol_Button, state.bot ? IM_COL32(160, 40, 40, 245) : IM_COL32(35, 120, 60, 245));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, state.bot ? IM_COL32(190, 50, 50, 255) : IM_COL32(45, 150, 75, 255));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, state.bot ? IM_COL32(220, 60, 60, 255) : IM_COL32(55, 180, 90, 255));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(20, 20, 20, 245));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(40, 40, 40, 245));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(65, 65, 65, 255));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, g_Theme.AccentU32());
+    ImGui::PushStyleColor(ImGuiCol_Separator, IM_COL32(80, 80, 80, 180));
+    ImGui::BeginChild("##stroika_bot", size, ImGuiChildFlags_Borders);
+    float segW = (ImGui::GetContentRegionAvail().x - 18.0f * scale) / 4.0f;
+    if(XoneButton("Завод ЖБК", scale, g_factoryMode == 0, segW, 26.0f)) g_factoryMode = 0;
+    ImGui::SameLine(0, 6.0f * scale);
+    if(XoneButton("Табачная фабрика", scale, g_factoryMode == 1, segW, 26.0f)) g_factoryMode = 1;
+    ImGui::SameLine(0, 6.0f * scale);
+    if(XoneButton("Лесоруб", scale, g_factoryMode == 2, segW, 26.0f)) g_factoryMode = 2;
+    ImGui::SameLine(0, 6.0f * scale);
+    if(XoneButton("Стройка", scale, g_factoryMode == 3, segW, 26.0f)) g_factoryMode = 3;
+    ImGui::Spacing();
+
+    float contentW = ImGui::GetContentRegionAvail().x;
+    float leftColW = std::floor((contentW - 14.0f * scale) * 0.48f);
+    float rightColW = contentW - leftColW - 14.0f * scale;
+
+    auto BeginCard = [&](const char* id, void (*drawIcon)(ImDrawList*, ImVec2, float, ImU32), const char* title, const char* subtitle, float height = 0.0f) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(20, 20, 28, 255));
+        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 14));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * scale, 10.0f * scale));
+        ImGuiChildFlags childFlags = ImGuiChildFlags_Borders;
+        if(height == 0.0f)
+            childFlags |= ImGuiChildFlags_AutoResizeY;
+        ImGui::BeginChild(id, ImVec2(-1.0f, height), childFlags, ImGuiWindowFlags_NoScrollbar);
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        drawIcon(draw, ImVec2(p.x + 10.0f * scale, p.y + 11.0f * scale), 8.0f * scale, g_Theme.AccentU32());
+        ImGui::SetCursorScreenPos(ImVec2(p.x + 24.0f * scale, p.y));
+        ImGui::BeginGroup();
+        ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "%s", title);
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "%s", subtitle);
+        ImGui::EndGroup();
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+    };
+
+    auto EndCard = [&]() {
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(2);
+        ImGui::Spacing();
+    };
+
+    // Левая колонка
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
+    ImGui::BeginChild("##stroika_left", ImVec2(leftColW, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+
+    BeginCard("##card_stroika_settings", TramIcons::DrawGear, "Параметры работы", "Задержка телепорта и неуязвимость");
+    ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Интервал сбора меток (мс):");
+    int curDelay = state.delay;
+    ImGui::SetNextItemWidth(-1.0f);
+    if(ImGui::SliderInt("##stroika_delay_slider", &curDelay, 8000, 30000, "%d мс"))
+    {
+        state.delay = curDelay;
+        QueueStroikaCommand("delay:" + std::to_string(curDelay));
+    }
+    ImGui::Spacing();
+
+    bool curGm = state.godmode;
+    if(ImGui::Checkbox("Бессмертие персонажа (GodMode)", &curGm))
+    {
+        state.godmode = curGm;
+        QueueStroikaCommand(curGm ? "godmode:1" : "godmode:0");
+    }
+    ImGui::Spacing();
+
+    if(XoneButton("Сбросить счётчики", scale, false, -1.0f, 24.0f * scale))
+    {
+        QueueStroikaCommand("reset_stats");
+    }
+    EndCard();
+
+    const bool isRunning = state.bot;
+    ImGui::PushStyleColor(ImGuiCol_Button, isRunning ? IM_COL32(185, 45, 45, 255) : g_Theme.AccentU32());
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, isRunning ? IM_COL32(215, 60, 60, 255) : g_Theme.HoverU32());
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, isRunning ? IM_COL32(235, 75, 75, 255) : g_Theme.ActiveU32());
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f * scale);
+    if(ImGui::Button(isRunning ? "■  Остановить стройку" : "▶  Запустить стройку", ImVec2(-1.0f, 38.0f * scale)))
+    {
+        state.bot = !isRunning;
+        QueueStroikaCommand(state.bot ? "bot:1" : "bot:0");
+    }
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(3);
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+
+    ImGui::SameLine(0, 10.0f * scale);
+
+    // Правая колонка
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
+    ImGui::BeginChild("##stroika_right", ImVec2(rightColW, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+
+    BeginCard("##card_stroika_telemetry", TramIcons::DrawChart, "Телеметрия смены", "Состояние бота стройки");
+    ImGui::TextColored(state.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(0.8f, 0.8f, 0.8f, 1.0f),
+        state.loaded ? "● LUA ONLINE" : "● LUA STANDBY");
+    ImGui::SameLine(0, 10.0f * scale);
+    ImGui::TextColored(isRunning ? ImVec4(0.35f, 0.88f, 0.65f, 1.0f) : ImVec4(0.70f, 0.72f, 0.78f, 1.0f),
+        "| Статус: %s", isRunning ? "В работе" : "Остановлен");
+
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Текущая задача:");
+    ImGui::SameLine(0, 6.0f * scale);
+    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "%s", state.status.empty() ? "Ожидание запуска" : state.status.c_str());
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    float boxW = (ImGui::GetContentRegionAvail().x - 6.0f * scale) * 0.5f;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(24, 27, 38, 255));
+    ImGui::BeginChild("##stroika_stat1", ImVec2(boxW, 44.0f * scale), ImGuiChildFlags_Borders);
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Пройдено меток");
+    ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "%s", state.checkpoints.c_str());
+    ImGui::EndChild();
+
+    ImGui::SameLine(0, 6.0f * scale);
+    ImGui::BeginChild("##stroika_stat2", ImVec2(boxW, 44.0f * scale), ImGuiChildFlags_Borders);
+    ImGui::TextColored(ImVec4(0.60f, 0.62f, 0.70f, 1.0f), "Заработано");
+    ImGui::TextColored(ImVec4(0.35f, 0.88f, 0.65f, 1.0f), "%s руб", state.rubles.c_str());
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    EndCard();
+
+    BeginCard("##card_stroika_log", TramIcons::DrawDoc, "Инструкция и журнал", "Правила работы и лог событий", 120.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 16, 23, 255));
+    if(ImGui::BeginChild("##stroika_log_scroll", ImVec2(-1.0f, -1.0f), true))
+    {
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "[Инфо] Стройка: перемещение по меткам стройки через телепорт");
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "[Инфо] Рекомендуемый безопасный интервал: 12-16 секунд");
+        ImGui::TextColored(ImVec4(0.35f, 0.78f, 0.98f, 1.0f), "[Этап] Текущее состояние: %s", state.status.c_str());
+        if(isRunning)
+            ImGui::TextColored(ImVec4(0.35f, 0.88f, 0.65f, 1.0f), "[Движение] Автоматический сбор активен");
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
@@ -3715,14 +3961,14 @@ static void ModeSelector(const char* id, bool* isHold, float scale)
     ImGui::PopStyleVar();
 }
 
-void DrawMiscTab(ImVec2 position, ImVec2 size, float scale)
+void DrawSettingsTab(ImVec2 position, ImVec2 size, float scale)
 {
     LoadToastSettings();
     LoadThemeSettings();
     ImGui::SetCursorScreenPos(position);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * scale);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 18, 135));
-    ImGui::BeginChild("##misc_tab", size, ImGuiChildFlags_Borders);
+    ImGui::BeginChild("##settings_tab", size, ImGuiChildFlags_Borders);
 
     XoneThemeColors c = GetCurrentTheme();
     const float availW = ImGui::GetContentRegionAvail().x;
@@ -3889,6 +4135,262 @@ void DrawMiscTab(ImVec2 position, ImVec2 size, float scale)
     ImGui::PopStyleVar();
 }
 
+void DrawMiscTab(ImVec2 position, ImVec2 size, float scale)
+{
+    SyncMiscState();
+    MiscState& state = g_visibleMiscState;
+    ImGui::SetCursorScreenPos(position);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 18, 135));
+    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(28, 28, 28, 245));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(48, 48, 48, 255));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(75, 75, 75, 255));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(20, 20, 20, 245));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(40, 40, 40, 245));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(65, 65, 65, 255));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, g_Theme.AccentU32());
+    ImGui::PushStyleColor(ImGuiCol_Separator, IM_COL32(80, 80, 80, 180));
+    ImGui::BeginChild("##misc_tools_tab", size, ImGuiChildFlags_Borders);
+
+    static int s_miscSubTab = 0;
+    float segW = (ImGui::GetContentRegionAvail().x - 6.0f * scale) / 2.0f;
+    if(XoneButton("Утилиты и читы", scale, s_miscSubTab == 0, segW, 26.0f)) s_miscSubTab = 0;
+    ImGui::SameLine(0, 6.0f * scale);
+    if(XoneButton("Камхак (CamHack)", scale, s_miscSubTab == 1, segW, 26.0f)) s_miscSubTab = 1;
+    ImGui::Spacing();
+
+    float contentW = ImGui::GetContentRegionAvail().x;
+    float leftColW = std::floor((contentW - 14.0f * scale) * 0.50f);
+    float rightColW = contentW - leftColW - 14.0f * scale;
+
+    auto BeginCard = [&](const char* id, void (*drawIcon)(ImDrawList*, ImVec2, float, ImU32), const char* title, const char* subtitle, float height = 0.0f) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(20, 20, 28, 255));
+        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 14));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * scale, 10.0f * scale));
+        ImGuiChildFlags childFlags = ImGuiChildFlags_Borders;
+        if(height == 0.0f)
+            childFlags |= ImGuiChildFlags_AutoResizeY;
+        ImGui::BeginChild(id, ImVec2(-1.0f, height), childFlags, ImGuiWindowFlags_NoScrollbar);
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        drawIcon(draw, ImVec2(p.x + 10.0f * scale, p.y + 11.0f * scale), 8.0f * scale, g_Theme.AccentU32());
+        ImGui::SetCursorScreenPos(ImVec2(p.x + 24.0f * scale, p.y));
+        ImGui::BeginGroup();
+        ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "%s", title);
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "%s", subtitle);
+        ImGui::EndGroup();
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+    };
+
+    auto EndCard = [&]() {
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(2);
+        ImGui::Spacing();
+    };
+
+    if(s_miscSubTab == 0)
+    {
+        // Подвкладка: Утилиты и читы
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
+        ImGui::BeginChild("##misc_util_left", ImVec2(leftColW, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+
+        BeginCard("##card_misc_veh", TramIcons::DrawGear, "Транспорт и починка", "Модификаторы состояния ТС");
+        bool legit = state.legitRepair;
+        if(ImGui::Checkbox("Легит-починка (998 HP)", &legit))
+        {
+            state.legitRepair = legit;
+            QueueMiscCommand(legit ? "legit_repair:1" : "legit_repair:0");
+        }
+        ImGui::Spacing();
+
+        bool carGm = state.carGm;
+        if(ImGui::Checkbox("ГМ автомобиля (996 HP)", &carGm))
+        {
+            state.carGm = carGm;
+            QueueMiscCommand(carGm ? "car_gm:1" : "car_gm:0");
+        }
+        ImGui::Spacing();
+
+        bool noCol = state.noCollision;
+        if(ImGui::Checkbox("Без коллизии (NoCollision)", &noCol))
+        {
+            state.noCollision = noCol;
+            QueueMiscCommand(noCol ? "nocollision:1" : "nocollision:0");
+        }
+        ImGui::Spacing();
+
+        if(XoneButton("Починить транспорт сейчас", scale, false, -1.0f, 26.0f * scale))
+        {
+            QueueMiscCommand("repair_now");
+        }
+        ImGui::Spacing();
+
+        bool af = state.antiFine;
+        if(ImGui::Checkbox("Антиштраф (красный свет и радары)", &af))
+        {
+            state.antiFine = af;
+            SetAntiFineEnabled(af);
+            QueueMiscCommand(af ? "antifine:1" : "antifine:0");
+        }
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f),
+            "Светофоры всегда зеленые + блокировка пакетов штрафов");
+        EndCard();
+
+        BeginCard("##card_misc_taran", TramIcons::DrawDoc, "Импульс тарана", "Ускорение вперед и сброс позиции");
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Сила импульса:");
+        ImGui::SetNextItemWidth(-1.0f);
+        if(ImGui::SliderInt("##taran_strength", &state.taranStrength, 1, 10, "%d"))
+        {
+            QueueMiscCommand("taran_str:" + std::to_string(state.taranStrength));
+        }
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Задержка возврата (мс):");
+        ImGui::SetNextItemWidth(-1.0f);
+        if(ImGui::SliderInt("##taran_del", &state.taranDelay, 20, 200, "%d мс"))
+        {
+            QueueMiscCommand("taran_del:" + std::to_string(state.taranDelay));
+        }
+        ImGui::Spacing();
+        if(XoneButton("▶  Ударить тараном (Импульс)", scale, true, -1.0f, 28.0f * scale))
+        {
+            QueueMiscCommand("taran_impulse");
+        }
+        EndCard();
+
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+
+        ImGui::SameLine(0, 10.0f * scale);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
+        ImGui::BeginChild("##misc_util_right", ImVec2(rightColW, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+
+        BeginCard("##card_misc_player", TramIcons::DrawPulse, "Игрок и персонаж", "Неуязвимость и спец-действия");
+        bool pGm = state.playerGm;
+        if(ImGui::Checkbox("Бессмертие персонажа (GodMode)", &pGm))
+        {
+            state.playerGm = pGm;
+            QueueMiscCommand(pGm ? "player_gm:1" : "player_gm:0");
+        }
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Обход квеста Алисы:");
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "Телепорт в безопасный интерьер");
+        if(XoneButton("Телепорт для сброса Алисы", scale, false, -1.0f, 28.0f * scale))
+        {
+            QueueMiscCommand("alice_bypass");
+        }
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Автосдача в автошколе:");
+        ImGui::TextColored(ImVec4(0.45f, 0.48f, 0.55f, 1.0f), "Завершение практического экзамена");
+        if(XoneButton("Сдать экзамен автошколы", scale, false, -1.0f, 28.0f * scale))
+        {
+            QueueMiscCommand("pass_driving_test");
+        }
+        EndCard();
+
+        BeginCard("##card_misc_info", TramIcons::DrawChart, "Статус модуля", "Информация о загрузке скрипта");
+        ImGui::TextColored(state.loaded ? ImVec4(0.2f, 1.0f, 0.5f, 1.0f) : ImVec4(0.8f, 0.8f, 0.8f, 1.0f),
+            state.loaded ? "● LUA ONLINE (misc_tools.lua)" : "● LUA STANDBY");
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f),
+            "Все функции переведены на управление через интерфейс.\nГорячие клавиши отключены для предотвращения случайных срабатываний.");
+        EndCard();
+
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+    }
+    else
+    {
+        // Подвкладка: Камхак (CamHack)
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
+        ImGui::BeginChild("##misc_cam_left", ImVec2(leftColW, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+
+        BeginCard("##card_cam_main", TramIcons::DrawEye, "Свободная камера", "Управление и перемещение камеры");
+        bool cam = state.camHack;
+        if(ImGui::Checkbox("Активировать свободную камеру (CamHack)", &cam))
+        {
+            state.camHack = cam;
+            QueueMiscCommand(cam ? "camhack:1" : "camhack:0");
+        }
+        ImGui::Spacing();
+
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Скорость перемещения:");
+        ImGui::SetNextItemWidth(-1.0f);
+        if(ImGui::SliderFloat("##cam_speed_slider", &state.camSpeed, 0.1f, 3.0f, "%.2f"))
+        {
+            QueueMiscCommand("camspeed:" + std::to_string(state.camSpeed));
+        }
+        ImGui::Spacing();
+
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Плавность поворота:");
+        ImGui::SetNextItemWidth(-1.0f);
+        if(ImGui::SliderFloat("##cam_smooth_slider", &state.camSmooth, 1.0f, 15.0f, "%.1f"))
+        {
+            QueueMiscCommand("camsmooth:" + std::to_string(state.camSmooth));
+        }
+        EndCard();
+
+        BeginCard("##card_cam_ctrl", TramIcons::DrawGear, "Доводка ракурса", "Кнопки поворота и наклона");
+        float btnW = (ImGui::GetContentRegionAvail().x - 6.0f * scale) * 0.5f;
+        if(XoneButton("↶ Поворот влево", scale, false, btnW, 26.0f * scale))
+        {
+            QueueMiscCommand("cam_rot_left");
+        }
+        ImGui::SameLine(0, 6.0f * scale);
+        if(XoneButton("↷ Поворот вправо", scale, false, btnW, 26.0f * scale))
+        {
+            QueueMiscCommand("cam_rot_right");
+        }
+        ImGui::Spacing();
+        if(XoneButton("▲ Наклон вверх", scale, false, btnW, 26.0f * scale))
+        {
+            QueueMiscCommand("cam_tilt_up");
+        }
+        ImGui::SameLine(0, 6.0f * scale);
+        if(XoneButton("▼ Наклон вниз", scale, false, btnW, 26.0f * scale))
+        {
+            QueueMiscCommand("cam_tilt_down");
+        }
+        EndCard();
+
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+
+        ImGui::SameLine(0, 10.0f * scale);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
+        ImGui::BeginChild("##misc_cam_right", ImVec2(rightColW, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+
+        BeginCard("##card_cam_pos", TramIcons::DrawChart, "Позиция камеры", "Текущие координаты в мире");
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "X: %s", state.camX.c_str());
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Y: %s", state.camY.c_str());
+        ImGui::TextColored(ImVec4(0.70f, 0.72f, 0.78f, 1.0f), "Z: %s", state.camZ.c_str());
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.65f, 1.0f),
+            "• При активации CamHack управление персонажем блокируется.\n• Для съемки красивых видео и осмотра локаций.\n• Выключение возвращает камеру на игрока.");
+        EndCard();
+
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+    }
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor(9);
+    ImGui::PopStyleVar();
+}
+
 void RenderMenu()
 {
     LoadThemeSettings();
@@ -3954,11 +4456,12 @@ void RenderMenu()
         {"##tab_pilot", "Pilot", 5, false},
         {"##tab_plow", "Поливалка (Авто)", 6, false},
         {"##tab_taxi", "Такси", 10, false},
+        {"##tab_misc", "Прочее", 11, false},
         {"##tab_admin", "Админы", 7, true},
         {"##tab_settings", "Настройки", 9, false}
     };
     const bool isPro = IsProLicense();
-    const int tabCount = 10;
+    const int tabCount = 11;
     for(int i = 0; i < tabCount; ++i)
     {
         ImVec2 tabPos(origin.x + 8.0f * scale, origin.y + (54.0f + i * 33.0f) * scale);
@@ -4107,11 +4610,15 @@ void RenderMenu()
     }
     else if(g_activeTab == 9)
     {
-        DrawMiscTab(contentPosition, contentSize, scale);
+        DrawSettingsTab(contentPosition, contentSize, scale);
     }
     else if(g_activeTab == 10)
     {
         DrawTaxiTab(contentPosition, contentSize, scale);
+    }
+    else if(g_activeTab == 11)
+    {
+        DrawMiscTab(contentPosition, contentSize, scale);
     }
     ImGui::PopFont();
 
@@ -4956,6 +5463,93 @@ void GuiResetTaxiState()
     g_taxiState.pollInterval = savedPoll;
     g_taxiCommands.clear();
     g_taxiDirty = true;
+}
+
+bool GuiTakeStroikaCommand(std::string& command)
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    if(g_stroikaCommands.empty())
+        return false;
+    command = std::move(g_stroikaCommands.front());
+    g_stroikaCommands.pop_front();
+    return true;
+}
+
+void GuiUpdateStroikaState(std::string_view key, std::string_view value)
+{
+    const bool enabled = value == "1" || value == "true";
+    std::scoped_lock lock(g_bridgeMutex);
+    if(key == "loaded") g_stroikaState.loaded = enabled;
+    else if(key == "bot") g_stroikaState.bot = enabled;
+    else if(key == "delay") g_stroikaState.delay = std::atoi(std::string(value).c_str());
+    else if(key == "godmode") g_stroikaState.godmode = enabled;
+    else if(key == "checkpoints") g_stroikaState.checkpoints = value;
+    else if(key == "rubles") g_stroikaState.rubles = value;
+    else if(key == "status") g_stroikaState.status = value;
+    else return;
+    g_stroikaDirty = true;
+}
+
+void GuiResetStroikaState()
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    const int savedDelay = g_stroikaState.delay;
+    const bool savedGm = g_stroikaState.godmode;
+    g_stroikaState = {};
+    g_stroikaState.delay = savedDelay;
+    g_stroikaState.godmode = savedGm;
+    g_stroikaCommands.clear();
+    g_stroikaDirty = true;
+}
+
+bool GuiTakeMiscCommand(std::string& command)
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    if(g_miscCommands.empty())
+        return false;
+    command = std::move(g_miscCommands.front());
+    g_miscCommands.pop_front();
+    return true;
+}
+
+void GuiUpdateMiscState(std::string_view key, std::string_view value)
+{
+    const bool enabled = value == "1" || value == "true";
+    std::scoped_lock lock(g_bridgeMutex);
+    if(key == "loaded") g_miscState.loaded = enabled;
+    else if(key == "legit_repair") g_miscState.legitRepair = enabled;
+    else if(key == "car_gm") g_miscState.carGm = enabled;
+    else if(key == "player_gm") g_miscState.playerGm = enabled;
+    else if(key == "nocollision") g_miscState.noCollision = enabled;
+    else if(key == "antifine")
+    {
+        g_miscState.antiFine = enabled;
+        SetAntiFineEnabled(enabled);
+    }
+    else if(key == "camhack") g_miscState.camHack = enabled;
+    else if(key == "cam_x") g_miscState.camX = value;
+    else if(key == "cam_y") g_miscState.camY = value;
+    else if(key == "cam_z") g_miscState.camZ = value;
+    else return;
+    g_miscDirty = true;
+}
+
+void GuiResetMiscState()
+{
+    std::scoped_lock lock(g_bridgeMutex);
+    const float savedSpeed = g_miscState.camSpeed;
+    const float savedSmooth = g_miscState.camSmooth;
+    const int savedTaranStr = g_miscState.taranStrength;
+    const int savedTaranDel = g_miscState.taranDelay;
+    const bool savedAntiFine = g_miscState.antiFine;
+    g_miscState = {};
+    g_miscState.antiFine = savedAntiFine;
+    g_miscState.camSpeed = savedSpeed;
+    g_miscState.camSmooth = savedSmooth;
+    g_miscState.taranStrength = savedTaranStr;
+    g_miscState.taranDelay = savedTaranDel;
+    g_miscCommands.clear();
+    g_miscDirty = true;
 }
 
 void GuiPushToast(std::string_view title, std::string_view message, std::string_view type, float durationSec)

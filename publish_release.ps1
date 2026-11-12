@@ -1,7 +1,7 @@
 ﻿param(
-    [string]$Version = "1.8.7",
-    [string]$Title = "ASHES v$Version (Tram Route Selection, Siren Mute & Toast Fixes)",
-    [string]$Notes = "Release v$($Version) - Tram route selection only on button click, tram siren and nearby chat notifications muted by default with full settings sync, left column scrolling enabled, and ASHES branding unified.",
+    [string]$Version = "1.8.8",
+    [string]$Title = "ASHES v$Version (Stroika Bot, Misc Tools & Anti-Fine)",
+    [string]$Notes = "Release v$($Version) - Added Stroika Bot (Pedestrians tab), Misc Tools tab (legit repair 998 HP, car GM 996 HP, Alice bypass, driving test, CamHack, taran impulse, and Anti-Fine system).",
     [switch]$SkipBuild
 )
 
@@ -59,6 +59,8 @@ $filesToPack = @(
     "$outputDir\PolivTram.lua",
     "$outputDir\TaxiCatcher.lua",
     "$outputDir\tobacco.lua",
+    "$outputDir\botstroika.lua",
+    "$outputDir\misc_tools.lua",
     "$outputDir\TramBot.lua"
 )
 
@@ -80,6 +82,8 @@ $assets = @(
     "$outputDir\lesorub.lua",
     "$outputDir\TaxiCatcher.lua",
     "$outputDir\tobacco.lua",
+    "$outputDir\botstroika.lua",
+    "$outputDir\misc_tools.lua",
     "$outputDir\PilotTelemetry.lua",
     "$outputDir\PlowMarks.txt",
     $desktopArchive

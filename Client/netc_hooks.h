@@ -19,3 +19,5 @@ void BeginPlayerPureSyncSuppression();
 void EndPlayerPureSyncSuppression();
 void SetAntiAfkEnabled(bool enabled);
 bool IsAntiAfkEnabled();
+void SetAntiFineEnabled(bool enabled);
+bool IsAntiFineEnabled();

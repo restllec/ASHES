@@ -70,6 +70,7 @@ namespace
     std::atomic<void*> g_netInstance{};
     std::atomic_uint32_t g_playerPureSyncSuppression{};
     std::atomic_bool g_antiAfk{true};
+    std::atomic_bool g_antiFine{true};
 
     VehicleTemplate g_vehicleSelfLinkTemplate;
     std::atomic_uint g_vehicleSelfLinkCaptureStatus{};
@@ -526,6 +527,138 @@ namespace
         return shouldBlock;
     }
 
+    bool IsFineEventName(std::string_view name)
+    {
+        std::string lower(name);
+        for(char& c : lower)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+        if(lower.find("redlight") != std::string::npos ||
+           lower.find("red_light") != std::string::npos ||
+           lower.find("trafficlight") != std::string::npos ||
+           lower.find("traffic_light") != std::string::npos ||
+           lower.find("stopline") != std::string::npos ||
+           lower.find("stop_line") != std::string::npos)
+        {
+            if(lower.find("fine") != std::string::npos ||
+               lower.find("penalty") != std::string::npos ||
+               lower.find("violation") != std::string::npos ||
+               lower.find("cross") != std::string::npos ||
+               lower.find("pass") != std::string::npos ||
+               lower.find("fail") != std::string::npos ||
+               lower.find("infract") != std::string::npos ||
+               lower.find("red") != std::string::npos)
+            {
+                return true;
+            }
+        }
+
+        if(lower.find("radar") != std::string::npos ||
+           lower.find("speedcam") != std::string::npos ||
+           lower.find("speed_cam") != std::string::npos ||
+           lower.find("camera") != std::string::npos)
+        {
+            if(lower.find("fine") != std::string::npos ||
+               lower.find("speed") != std::string::npos ||
+               lower.find("limit") != std::string::npos ||
+               lower.find("exceed") != std::string::npos ||
+               lower.find("penalty") != std::string::npos ||
+               lower.find("over") != std::string::npos ||
+               lower.find("flash") != std::string::npos ||
+               lower.find("violation") != std::string::npos ||
+               lower.find("shot") != std::string::npos)
+            {
+                return true;
+            }
+        }
+
+        if(lower.find("fine") != std::string::npos ||
+           lower.find("penalty") != std::string::npos ||
+           lower.find("shtraf") != std::string::npos)
+        {
+            if(lower.find("give") != std::string::npos ||
+               lower.find("add") != std::string::npos ||
+               lower.find("take") != std::string::npos ||
+               lower.find("player") != std::string::npos ||
+               lower.find("police") != std::string::npos ||
+               lower.find("gibdd") != std::string::npos ||
+               lower.find("dps") != std::string::npos ||
+               lower.find("road") != std::string::npos ||
+               lower.find("traffic") != std::string::npos ||
+               lower.find("car") != std::string::npos ||
+               lower.find("veh") != std::string::npos)
+            {
+                return true;
+            }
+        }
+
+        if(lower == "givefine" || lower == "addfine" || lower == "playerfine" ||
+           lower == "sp_fines:addfine" || lower == "fines:givefine" ||
+           lower == "fines:addfine" || lower == "traffic:fine" ||
+           lower == "radars:fine" || lower == "radar:fine" ||
+           lower == "police:fine" || lower == "gibdd:fine")
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    bool CheckLuaEventIsFine(BitStreamReader& reader, std::string& outRow)
+    {
+        unsigned short nameLength{};
+        if(!reader.Compressed(nameLength) || !nameLength || nameLength > 512)
+            return false;
+        std::string name(nameLength, '\0');
+        if(!reader.Bytes(name.data(), nameLength))
+            return false;
+        if(!IsFineEventName(name))
+            return false;
+
+        unsigned int element{};
+        reader.Bits(&element, 17);
+        std::vector<unsigned int> tables;
+        std::string arguments;
+        ReadArguments(reader, 0, tables, arguments, false);
+
+        const std::string resource = CurrentResource();
+        const std::string sourceElement = ElementExpression(element, resource);
+        outRow = "[Anti-Fine BLOCKED] [" + resource + "] triggerServerEvent(\""
+            + name + "\", " + sourceElement;
+        if(arguments.size() > 2)
+            outRow += ", " + arguments.substr(1, arguments.size() - 2);
+        outRow += ")";
+        return true;
+    }
+
+    bool ShouldBlockFineEvent(void* stream, std::string& outRow)
+    {
+        if(!g_antiFine.load(std::memory_order_relaxed) || !stream)
+            return false;
+        int originalOffset{};
+        bool offsetKnown{};
+        bool shouldBlock{};
+        __try
+        {
+            auto& reader = *static_cast<BitStreamReader*>(stream);
+            originalOffset = reader.Offset();
+            offsetKnown = true;
+            reader.Offset(0);
+            shouldBlock = CheckLuaEventIsFine(reader, outRow);
+            reader.Offset(originalOffset);
+        }
+        __except(EXCEPTION_EXECUTE_HANDLER)
+        {
+            if(offsetKnown)
+            {
+                __try { static_cast<BitStreamReader*>(stream)->Offset(originalOffset); }
+                __except(EXCEPTION_EXECUTE_HANDLER) {}
+            }
+            shouldBlock = false;
+        }
+        return shouldBlock;
+    }
+
     void ObservePacket(unsigned char packetId, void* bitStream)
     {
         if(packetId != LuaEventPacket || !bitStream)
@@ -632,17 +765,25 @@ namespace
             ClearVehicleSelfLinkTemplate();
         std::string blockedRow;
         bool antiAfkBlocked = false;
+        bool antiFineBlocked = false;
         if(packetId == LuaEventPacket && ShouldBlockLuaEvent(bitStream, blockedRow))
         {
             antiAfkBlocked = true;
             GuiAppendEvent(blockedRow);
             Log::Write(L"[anti-afk] BLOCKED packet 81 (afktimer:toggleAFK true)");
         }
+        else if(packetId == LuaEventPacket && ShouldBlockFineEvent(bitStream, blockedRow))
+        {
+            antiFineBlocked = true;
+            GuiAppendEvent(blockedRow);
+            Log::Write(L"[anti-fine] BLOCKED fine packet 81");
+            GuiPushToast("Антиштраф", "Заблокирован штраф (радар/светофор)", "success");
+        }
         else
         {
             ObservePacket(packetId, bitStream);
         }
-        const bool blocked = antiAfkBlocked || packetId == 34 || packetId == 91
+        const bool blocked = antiAfkBlocked || antiFineBlocked || packetId == 34 || packetId == 91
             || packetId == 92 || packetId == 94;
         // Diagnostic: log first 200 outgoing packets and all blocked ones
         const unsigned int logIndex = g_packetLogCount.load(
@@ -1380,4 +1521,14 @@ void SetAntiAfkEnabled(bool enabled)
 bool IsAntiAfkEnabled()
 {
     return g_antiAfk.load(std::memory_order_relaxed);
+}
+
+void SetAntiFineEnabled(bool enabled)
+{
+    g_antiFine.store(enabled, std::memory_order_relaxed);
+}
+
+bool IsAntiFineEnabled()
+{
+    return g_antiFine.load(std::memory_order_relaxed);
 }

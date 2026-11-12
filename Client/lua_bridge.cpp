@@ -94,6 +94,12 @@ std::atomic<DWORD> g_lesorubRetryTick{};
 std::atomic_uint32_t g_taxiState{};
 std::atomic_uintptr_t g_taxiSession{};
 std::atomic<DWORD> g_taxiRetryTick{};
+std::atomic_uint32_t g_stroikaState{};
+std::atomic_uintptr_t g_stroikaSession{};
+std::atomic<DWORD> g_stroikaRetryTick{};
+std::atomic_uint32_t g_miscState{};
+std::atomic_uintptr_t g_miscSession{};
+std::atomic<DWORD> g_miscRetryTick{};
 std::atomic_uint32_t g_jtuState{};
 std::atomic_uintptr_t g_jtuSession{};
 std::atomic<DWORD> g_jtuRetryTick{};
@@ -114,6 +120,8 @@ std::wstring g_trampScriptPath;
 std::wstring g_tobaccoScriptPath;
 std::wstring g_lesorubScriptPath;
 std::wstring g_taxiScriptPath;
+std::wstring g_stroikaScriptPath;
+std::wstring g_miscScriptPath;
 std::string g_bootstrapPayload;
 std::string g_bootstrapError;
 std::string g_tramPayload;
@@ -125,6 +133,8 @@ std::string g_trampPayload;
 std::string g_tobaccoPayload;
 std::string g_lesorubPayload;
 std::string g_taxiPayload;
+std::string g_stroikaPayload;
+std::string g_miscPayload;
 std::atomic_uint32_t g_trampState{};
 std::atomic_uintptr_t g_trampSession{};
 std::atomic<DWORD> g_trampRetryTick{};
@@ -535,6 +545,53 @@ int __cdecl DirectTaxiUpdate(void* lua)
     return 1;
 }
 
+int __cdecl DirectStroikaTakeCommand(void* lua)
+{
+    std::string command;
+    if(!GuiTakeStroikaCommand(command))
+        return 0;
+    DarkFlameLuaPushString(lua, command.c_str());
+    Log::Write(L"[stroika] Lua consumed GUI command: " + WideAscii(command));
+    return 1;
+}
+
+int __cdecl DirectStroikaUpdate(void* lua)
+{
+    if(DarkFlameLuaGetTop(lua) < 2)
+    {
+        DarkFlameLuaPushBoolean(lua, 0);
+        return 1;
+    }
+    const std::string key = LuaText(lua, 1, 64, false);
+    const std::string value = LuaText(lua, 2, 512, false);
+    GuiUpdateStroikaState(key, value);
+    DarkFlameLuaPushBoolean(lua, 1);
+    return 1;
+}
+
+int __cdecl DirectMiscTakeCommand(void* lua)
+{
+    std::string command;
+    if(!GuiTakeMiscCommand(command))
+        return 0;
+    DarkFlameLuaPushString(lua, command.c_str());
+    return 1;
+}
+
+int __cdecl DirectMiscUpdate(void* lua)
+{
+    if(DarkFlameLuaGetTop(lua) < 2)
+    {
+        DarkFlameLuaPushBoolean(lua, 0);
+        return 1;
+    }
+    const std::string key = LuaText(lua, 1, 64, false);
+    const std::string value = LuaText(lua, 2, 512, false);
+    GuiUpdateMiscState(key, value);
+    DarkFlameLuaPushBoolean(lua, 1);
+    return 1;
+}
+
 int __cdecl DirectSetAntiAfk(void* lua)
 {
     if(DarkFlameLuaGetTop(lua) >= 1)
@@ -617,6 +674,10 @@ void RegisterDirectAliases(void* lua)
     RegisterPrivate(lua, "dfLesorubUpdate", &DirectLesorubUpdate);
     RegisterPrivate(lua, "dfTaxiTakeCommand", &DirectTaxiTakeCommand);
     RegisterPrivate(lua, "dfTaxiUpdate", &DirectTaxiUpdate);
+    RegisterPrivate(lua, "dfStroikaTakeCommand", &DirectStroikaTakeCommand);
+    RegisterPrivate(lua, "dfStroikaUpdate", &DirectStroikaUpdate);
+    RegisterPrivate(lua, "dfMiscTakeCommand", &DirectMiscTakeCommand);
+    RegisterPrivate(lua, "dfMiscUpdate", &DirectMiscUpdate);
     RegisterPrivate(lua, "dfPushToast", &DirectPushToast);
     RegisterPrivate(lua, "dfToast", &DirectPushToast);
     RegisterPrivate(lua, "dfMenuOpen", &MenuOpen);
@@ -1489,6 +1550,18 @@ void ResetBotSessionIfMatching(std::uintptr_t id)
         g_taxiSession.store(0, std::memory_order_release);
         GuiResetTaxiState();
     }
+    if(g_stroikaSession.load(std::memory_order_acquire) == id)
+    {
+        g_stroikaState.store(0, std::memory_order_release);
+        g_stroikaSession.store(0, std::memory_order_release);
+        GuiResetStroikaState();
+    }
+    if(g_miscSession.load(std::memory_order_acquire) == id)
+    {
+        g_miscState.store(0, std::memory_order_release);
+        g_miscSession.store(0, std::memory_order_release);
+        GuiResetMiscState();
+    }
     if(g_jtuSession.load(std::memory_order_acquire) == id)
     {
         g_jtuState.store(0, std::memory_order_release);
@@ -1788,11 +1861,17 @@ void BuildBootstrapPayload(std::wstring_view loaderDirectory)
         : std::wstring(loaderDirectory) + L"\\lesorub.lua";
     g_taxiScriptPath = loaderDirectory.empty() ? std::wstring{}
         : std::wstring(loaderDirectory) + L"\\TaxiCatcher.lua";
+    g_stroikaScriptPath = loaderDirectory.empty() ? std::wstring{}
+        : std::wstring(loaderDirectory) + L"\\botstroika.lua";
+    g_miscScriptPath = loaderDirectory.empty() ? std::wstring{}
+        : std::wstring(loaderDirectory) + L"\\misc_tools.lua";
     g_jtuPayload.clear();
     g_trampPayload.clear();
     g_tobaccoPayload.clear();
     g_lesorubPayload.clear();
     g_taxiPayload.clear();
+    g_stroikaPayload.clear();
+    g_miscPayload.clear();
 
     auto loadFile = [&](std::initializer_list<const char*> names, std::string& payload, const wchar_t* tag) {
         for(const char* name : names)
@@ -1853,6 +1932,33 @@ void BuildBootstrapPayload(std::wstring_view loaderDirectory)
         GuiUpdateTaxiState("loaded", "0");
         GuiUpdateTaxiState("status", taxiError);
         Log::Write(L"[taxi] not staged: " + WideAscii(taxiError));
+    }
+
+    std::string stroika, stroikaError;
+    if(ReadLuaScript(g_stroikaScriptPath, "botstroika.lua", stroika, stroikaError))
+    {
+        g_stroikaPayload = std::move(stroika);
+        GuiUpdateStroikaState("loaded", "1");
+        Log::Write(L"[stroika] staged: " + std::to_wstring(g_stroikaPayload.size()) + L" bytes");
+    }
+    else
+    {
+        GuiUpdateStroikaState("loaded", "0");
+        GuiUpdateStroikaState("status", stroikaError);
+        Log::Write(L"[stroika] not staged: " + WideAscii(stroikaError));
+    }
+
+    std::string misc, miscError;
+    if(ReadLuaScript(g_miscScriptPath, "misc_tools.lua", misc, miscError))
+    {
+        g_miscPayload = std::move(misc);
+        GuiUpdateMiscState("loaded", "1");
+        Log::Write(L"[misc] staged: " + std::to_wstring(g_miscPayload.size()) + L" bytes");
+    }
+    else
+    {
+        GuiUpdateMiscState("loaded", "0");
+        Log::Write(L"[misc] not staged: " + WideAscii(miscError));
     }
 }
 
@@ -2258,6 +2364,83 @@ void TryStartTaxiBot()
     GuiUpdateTaxiState("status", error);
 }
 
+void TryStartStroikaBot()
+{
+    if(g_bootstrapState.load(std::memory_order_acquire) != 2
+        || g_stroikaPayload.empty()
+        || g_stroikaState.load(std::memory_order_acquire) == 2)
+    {
+        return;
+    }
+    const DWORD now = GetTickCount();
+    DWORD checked = g_stroikaRetryTick.load(std::memory_order_relaxed);
+    if(now - checked < 500 || !g_stroikaRetryTick.compare_exchange_strong(
+        checked, now, std::memory_order_relaxed))
+    {
+        return;
+    }
+    std::uint32_t expected{};
+    if(!g_stroikaState.compare_exchange_strong(expected, 1,
+        std::memory_order_acq_rel, std::memory_order_acquire))
+    {
+        return;
+    }
+
+    std::uintptr_t id{};
+    std::string error;
+    for(const char* res : {"province_tram", "province_ac", "freeroam", "sp_system", "gui"})
+    {
+        if(InjectIntoResource(res, g_stroikaPayload, id, error))
+        {
+            g_stroikaSession.store(id, std::memory_order_release);
+            g_stroikaState.store(2, std::memory_order_release);
+            GuiUpdateStroikaState("loaded", "1");
+            Log::Write(L"[stroika] runtime injection started in " + WideAscii(res));
+            return;
+        }
+    }
+    g_stroikaState.store(0, std::memory_order_release);
+    GuiUpdateStroikaState("status", error);
+}
+
+void TryStartMiscTools()
+{
+    if(g_bootstrapState.load(std::memory_order_acquire) != 2
+        || g_miscPayload.empty()
+        || g_miscState.load(std::memory_order_acquire) == 2)
+    {
+        return;
+    }
+    const DWORD now = GetTickCount();
+    DWORD checked = g_miscRetryTick.load(std::memory_order_relaxed);
+    if(now - checked < 500 || !g_miscRetryTick.compare_exchange_strong(
+        checked, now, std::memory_order_relaxed))
+    {
+        return;
+    }
+    std::uint32_t expected{};
+    if(!g_miscState.compare_exchange_strong(expected, 1,
+        std::memory_order_acq_rel, std::memory_order_acquire))
+    {
+        return;
+    }
+
+    std::uintptr_t id{};
+    std::string error;
+    for(const char* res : {"province_tram", "province_ac", "freeroam", "sp_system", "gui"})
+    {
+        if(InjectIntoResource(res, g_miscPayload, id, error))
+        {
+            g_miscSession.store(id, std::memory_order_release);
+            g_miscState.store(2, std::memory_order_release);
+            GuiUpdateMiscState("loaded", "1");
+            Log::Write(L"[misc] runtime injection started in " + WideAscii(res));
+            return;
+        }
+    }
+    g_miscState.store(0, std::memory_order_release);
+}
+
 void TryStartJtuBot()
 {
     if(g_bootstrapState.load(std::memory_order_acquire) != 2 || g_jtuPayload.empty())
@@ -2401,6 +2584,12 @@ void ResetForReconnect(bool immediate = false)
     g_taxiState.store(0, std::memory_order_release);
     g_taxiSession.store(0, std::memory_order_release);
     g_taxiRetryTick.store(0, std::memory_order_release);
+    g_stroikaState.store(0, std::memory_order_release);
+    g_stroikaSession.store(0, std::memory_order_release);
+    g_stroikaRetryTick.store(0, std::memory_order_release);
+    g_miscState.store(0, std::memory_order_release);
+    g_miscSession.store(0, std::memory_order_release);
+    g_miscRetryTick.store(0, std::memory_order_release);
     g_jtuState.store(0, std::memory_order_release);
     g_jtuSession.store(0, std::memory_order_release);
     g_jtuRetryTick.store(0, std::memory_order_release);
@@ -2416,6 +2605,8 @@ void ResetForReconnect(bool immediate = false)
     GuiResetJbkState();
     GuiResetTobaccoState();
     GuiResetTaxiState();
+    GuiResetStroikaState();
+    GuiResetMiscState();
     g_hideCalls.store(false, std::memory_order_release);
     g_scopeDepth.store(0, std::memory_order_release);
 }
@@ -2885,6 +3076,8 @@ void PulseLuaBridge()
     TryStartTobaccoBot();
     TryStartLesorubBot();
     TryStartTaxiBot();
+    TryStartStroikaBot();
+    TryStartMiscTools();
     TryStartJtuBot();
     TryStartTramPolivBot();
 }
