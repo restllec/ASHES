@@ -27,7 +27,17 @@ if (Test-Path $updaterHeader) {
 
 if (!$SkipBuild) {
     Write-Host "=== [1/4] Сборка проекта (MSBuild Release x86) ===" -ForegroundColor Cyan
+    Remove-Item "$outputDir\*.old" -Force -ErrorAction SilentlyContinue
+    Rename-Item "$outputDir\AshesClient.pdb" "AshesClient.pdb.old" -Force -ErrorAction SilentlyContinue
+    Rename-Item "$outputDir\AshesAgent.pdb" "AshesAgent.pdb.old" -Force -ErrorAction SilentlyContinue
+    Rename-Item "$outputDir\Ashes.pdb" "Ashes.pdb.old" -Force -ErrorAction SilentlyContinue
+    Rename-Item "$outputDir\AshesClient.dll" "AshesClient.dll.old" -Force -ErrorAction SilentlyContinue
+    Rename-Item "$outputDir\AshesAgent.dll" "AshesAgent.dll.old" -Force -ErrorAction SilentlyContinue
+    Rename-Item "$outputDir\Ashes.exe" "Ashes.exe.old" -Force -ErrorAction SilentlyContinue
     & $msbuild "$PSScriptRoot\DarkFlame.sln" /p:Configuration=Release /p:Platform=x86 /v:m
+    if (!(Test-Path "$outputDir\Ashes.exe") -and (Test-Path "$outputDir\Ashes.exe.old")) { Copy-Item "$outputDir\Ashes.exe.old" "$outputDir\Ashes.exe" -Force }
+    if (!(Test-Path "$outputDir\AshesAgent.dll") -and (Test-Path "$outputDir\AshesAgent.dll.old")) { Copy-Item "$outputDir\AshesAgent.dll.old" "$outputDir\AshesAgent.dll" -Force }
+    if (!(Test-Path "$outputDir\AshesClient.dll") -and (Test-Path "$outputDir\AshesClient.dll.old")) { Copy-Item "$outputDir\AshesClient.dll.old" "$outputDir\AshesClient.dll" -Force }
 } else {
     Write-Host "=== [1/4] Сборка пропущена (SkipBuild) ===" -ForegroundColor Cyan
 }
