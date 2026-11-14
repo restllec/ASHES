@@ -8,6 +8,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x86-0078D6.svg?style=for-the-badge&logo=windows)](https://microsoft.com/windows)
 [![DirectX](https://img.shields.io/badge/Graphics-DirectX%209-orange.svg?style=for-the-badge)](https://en.wikipedia.org/wiki/Direct3D#Direct3D_9)
 [![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
+[![User Manual](https://img.shields.io/badge/Guide-Инструкция-red.svg?style=for-the-badge)](MANUAL.md)
 [![Telegram](https://img.shields.io/badge/Telegram-ASHES%20Bot-2CA5E0.svg?style=for-the-badge&logo=telegram)](https://t.me/ashes_rst_bot)
 
 </div>
