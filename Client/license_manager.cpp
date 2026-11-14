@@ -157,7 +157,15 @@ namespace
         return ashesPath;
     }
 
-    void SaveKeyToFile(const std::string& key)
+    std::string ComputeLicenseSignature(const std::string& key, const std::string& hwid, const std::string& expires)
+    {
+        uint64_t hash = Fnv1aHash(key + "|" + hwid + "|" + expires + "|DARKFLAME_ASHES_PRO_2026");
+        char buf[32]{};
+        std::snprintf(buf, sizeof(buf), "%016llX", static_cast<unsigned long long>(hash));
+        return buf;
+    }
+
+    void SaveKeyToFile(const std::string& key, const std::string& expires = "")
     {
         std::wstring dir;
         if (!g_licenseDirectory.empty())
@@ -165,23 +173,25 @@ namespace
         if (!dir.empty() && dir.back() != L'\\' && dir.back() != L'/')
             dir.push_back(L'\\');
 
+        std::string effectiveExpires = expires.empty() ? "2099-12-31" : expires;
+        std::string sig;
+        if (!g_license.hwid.empty())
+            sig = ComputeLicenseSignature(key, g_license.hwid, effectiveExpires);
+
         for (const wchar_t* name : { L"Ashes_license.cfg", L"DarkFlame_license.cfg" })
         {
             std::ofstream file(dir + name);
             if (file.is_open())
             {
-                file << key;
+                file << key << "\n";
+                if (!sig.empty())
+                {
+                    file << effectiveExpires << "\n";
+                    file << sig << "\n";
+                }
                 file.close();
             }
         }
-    }
-
-    std::string ComputeLicenseSignature(const std::string& key, const std::string& hwid, const std::string& expires)
-    {
-        uint64_t hash = Fnv1aHash(key + "|" + hwid + "|" + expires + "|DARKFLAME_ASHES_PRO_2026");
-        char buf[32]{};
-        std::snprintf(buf, sizeof(buf), "%016llX", static_cast<unsigned long long>(hash));
-        return buf;
     }
 
     struct SavedLicenseData
@@ -286,10 +296,10 @@ namespace
             return false;
         }
 
-        // WinHTTP client verification
+        // WinHTTP client verification (default proxy for system compatibility)
         HINTERNET hSession = WinHttpOpen(
             L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
         if (!hSession)
         {
             g_license.is_pro = false;
@@ -299,14 +309,23 @@ namespace
 
         DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
         WinHttpSetOption(hSession, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
-        WinHttpSetTimeouts(hSession, 10000, 10000, 10000, 15000);
+        WinHttpSetTimeouts(hSession, 5000, 5000, 5000, 8000);
 
-        HINTERNET hConnect = WinHttpConnect(hSession, L"ashes-licensing.vercel.app", INTERNET_DEFAULT_HTTPS_PORT, 0);
+        static const wchar_t* s_licHosts[] = {
+            L"api.rmx-help.ru",
+            L"ashes-licensing.vercel.app"
+        };
+
         bool verified = false;
         std::string serverError;
         std::string serverExpires;
-        if (hConnect)
+
+        for (const wchar_t* host : s_licHosts)
         {
+            HINTERNET hConnect = WinHttpConnect(hSession, host, INTERNET_DEFAULT_HTTPS_PORT, 0);
+            if (!hConnect)
+                continue;
+
             HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", L"/api/check_license",
                 nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
             if (hRequest)
@@ -378,6 +397,9 @@ namespace
                 WinHttpCloseHandle(hRequest);
             }
             WinHttpCloseHandle(hConnect);
+
+            if (verified)
+                break;
         }
         WinHttpCloseHandle(hSession);
 
@@ -386,7 +408,7 @@ namespace
             g_license.is_pro = true;
             g_license.expire_date = serverExpires.empty() ? "Активна (PRO)" : serverExpires.substr(0, 10);
             g_license.status_msg = "PRO (Лицензия подтверждена)";
-            SaveKeyToFile(key);
+            SaveKeyToFile(key, serverExpires);
             return true;
         }
 

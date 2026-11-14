@@ -991,7 +991,19 @@ local function onChatMessage(text, red, green, blue, messageType)
     end
 end
 
+local function isServerNightTraffic()
+    if type(getRealTime) ~= "function" then return false end
+    local t = getRealTime()
+    if type(t) ~= "table" or type(t.timestamp) ~= "number" then return false end
+    local secondsOfDay = (t.timestamp + 3 * 3600) % 86400
+    local hour = math.floor(secondsOfDay / 3600)
+    return hour >= 0 and hour < 12
+end
+
 local function trafficGreen(expected)
+    if isServerNightTraffic() then
+        return true
+    end
     local actual = tonumber(getTrafficLightState())
     local wanted = tonumber(expected)
     local green = actual == wanted
@@ -1207,8 +1219,8 @@ local function onBrakeRender()
         end
         local point = activeRoute[1]
         if point then
-            if ignoreTraffic and point[2] == "traffic" then
-                removeCurrentPoint("Светофор проигнорирован")
+            if (ignoreTraffic or isServerNightTraffic()) and point[2] == "traffic" then
+                removeCurrentPoint("Светофор проигнорирован (ночь или настройка)")
             else
                 local distance = math.abs(point[1] - position)
                 if point[2] == "marker" and point.forceStop then

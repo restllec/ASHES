@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$Version = "1.8.8",
     [string]$Title = "ASHES v$Version (Stroika Bot, Misc Tools & Anti-Fine)",
     [string]$Notes = "Release v$($Version) - Added Stroika Bot (Pedestrians tab), Misc Tools tab (legit repair 998 HP, car GM 996 HP, Alice bypass, driving test, CamHack, taran impulse, and Anti-Fine system).",

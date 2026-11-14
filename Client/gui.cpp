@@ -1572,6 +1572,18 @@ void DrawTramBot(ImVec2 position, ImVec2 size, float scale)
         SaveCurrentSettings();
         QueueTramCommand(std::string("space_stop:") + (s_tramSpaceStop ? "1" : "0"));
     }
+    bool af = g_miscState.antiFine;
+    if(ImGui::Checkbox("Антиштраф (светофоры)", &af))
+    {
+        g_miscState.antiFine = af;
+        SetAntiFineEnabled(af);
+        QueueMiscCommand(af ? "antifine:1" : "antifine:0");
+    }
+    ImGui::TextColored(ImVec4(0.48f, 0.50f, 0.58f, 1.0f), "С 00:00 до 12:00 МСК отключается автоматически");
+    if(ImGui::Checkbox("Игнорировать светофоры (всегда)", &state.traffic))
+    {
+        QueueTramCommand(std::string("traffic:") + (state.traffic ? "1" : "0"));
+    }
     EndCard();
 
     // 7. Карточка «Отладка»

@@ -63,14 +63,35 @@ local function setNoCollision(enabled)
     end
 end
 
--- Антиштраф: светофоры и блокировка фиксации нарушений
+local function getMoscowHour()
+    if type(getRealTime) ~= "function" then return 12 end
+    local t = getRealTime()
+    if type(t) ~= "table" or type(t.timestamp) ~= "number" then return 12 end
+    local secondsOfDay = (t.timestamp + 3 * 3600) % 86400
+    return math.floor(secondsOfDay / 3600)
+end
+
+local function isNightTimeMsk()
+    local h = getMoscowHour()
+    return h >= 0 and h < 12
+end
+
+-- Антиштраф: светофоры и блокировка фиксации нарушений (00:00–12:00 МСК авто-отключение)
 local function setAntiFine(enabled)
     antiFine = enabled
     if enabled then
-        pcall(setTrafficLightsLocked, true)
-        pcall(setTrafficLightState, "all_green")
-        if dfPushToast then
-            dfPushToast("Антиштраф", "Светофоры зафиксированы на зеленый", "success")
+        if isNightTimeMsk() then
+            pcall(setTrafficLightsLocked, false)
+            pcall(setTrafficLightState, "auto")
+            if dfPushToast then
+                dfPushToast("Антиштраф", "Ночной режим (00:00–12:00 МСК): светофоры свободны", "info")
+            end
+        else
+            pcall(setTrafficLightsLocked, true)
+            pcall(setTrafficLightState, "all_green")
+            if dfPushToast then
+                dfPushToast("Антиштраф", "Светофоры зафиксированы на зеленый", "success")
+            end
         end
     else
         pcall(setTrafficLightsLocked, false)
@@ -84,12 +105,15 @@ end
 -- Периодическая проверка и поддержание зеленого сигнала
 setTimer(function()
     if antiFine then
-        pcall(setTrafficLightsLocked, true)
-        pcall(setTrafficLightState, "all_green")
+        if isNightTimeMsk() then
+            pcall(setTrafficLightsLocked, false)
+            pcall(setTrafficLightState, "auto")
+        else
+            pcall(setTrafficLightsLocked, true)
+            pcall(setTrafficLightState, "all_green")
+        end
     end
-end, 1500, 0)
-pcall(setTrafficLightsLocked, true)
-pcall(setTrafficLightState, "all_green")
+end, 2000, 0)
 
 -- Обход Алисы (телепорт в безопасный интерьер/dimension 0)
 local function bypassAlice()
